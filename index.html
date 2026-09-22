@@ -10,7 +10,8 @@
 </style></head><body>
 <main id="game"><canvas id="universe" aria-label="Sistema Genesis com uma estrela e um planeta terrestre"></canvas><div class="hud brand">GENESISPHERE</div><div class="hud info"><b>Sistema Genesis</b><span>Genesis-1 · Estrela G</span><span>Astra-1 · Planeta terrestre</span><span>1,00 UA · 365 dias</span></div><div class="hud zoom"><button id="zoomOut" type="button" aria-label="Afastar">−</button><output id="zoomLevel">1.0×</output><button id="zoomIn" type="button" aria-label="Aproximar">+</button></div></main>
 <section id="rotate" role="status" aria-live="polite"><div class="rotate-card"><div class="phone" aria-hidden="true"></div><h1>Explore em modo paisagem</h1><p>Gire seu dispositivo para entrar no Genesisphere e aproveitar toda a extensão do universo.</p></div></section>
-<script>
+<script type="module">
+import{renderAstra1}from"./src/entities/astra-1/render.js";
 (()=>{const c=document.getElementById("universe"),x=c.getContext("2d");let w=0,h=0,d=1,s=[],ox=0,oy=0,drag=false,lx=0,ly=0,zoom=1,pinch=0;const zi=document.getElementById("zoomIn"),zo=document.getElementById("zoomOut"),zl=document.getElementById("zoomLevel"),pts=new Map();function setZoom(v){zoom=Math.max(.55,Math.min(8,v));zl.value=zoom.toFixed(1)+"×"}
 function seed(){s=[];for(let i=0,n=Math.min(1800,Math.floor(w*h/850));i<n;i++){let z=Math.random();s.push({x:Math.random()*w,y:Math.random()*h,r:.25+Math.random()*1.15*(.35+z),a:.18+Math.random()*.78,z:.15+z*.85,t:Math.random()*6.28})}}
 function resize(){const r=c.getBoundingClientRect();d=Math.min(devicePixelRatio||1,2);w=Math.max(1,r.width);h=Math.max(1,r.height);c.width=Math.floor(w*d);c.height=Math.floor(h*d);x.setTransform(d,0,0,d,0,0);seed()}
