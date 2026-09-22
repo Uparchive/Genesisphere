@@ -14,10 +14,12 @@ Genesisphere cresce por adição, não por reescrita. Uma criação nova não de
 8. **Extensão antes de modificação:** novas leis acrescentam comportamento; qualquer mudança incompatível exige nova versão.
 9. **IDs estáveis:** toda criação recebe identidade própria.
 10. **História auditável:** ações importantes devem poder ser representadas como eventos.
+11. **Isolamento de entidades concretas:** Características exclusivas de uma entidade concreta devem permanecer isoladas no módulo dessa entidade e não podem contaminar entidades futuras.
 
 ## Estrutura
 - src/core: motor neutro e estável.
 - src/modules: capacidades independentes do jogo.
+- src/entities/astra-1/atlas: geografia canônica exclusiva do Astra-1, independente da apresentação.
 - src/app.js: composição dos módulos.
 - index.html: apresentação/entrada web.
 
