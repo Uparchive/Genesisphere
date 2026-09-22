@@ -1,0 +1,1 @@
+import{GenesisEngine}from"./core/engine.js";import{CosmosModule}from"./modules/cosmos.js";export const genesis=new GenesisEngine();genesis.use(CosmosModule);genesis.create("cosmic.empty-space",{name:"Genesisphere"});globalThis.Genesisphere=genesis;
