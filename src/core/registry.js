@@ -1,0 +1,1 @@
+export class Registry{constructor(){this.types=new Map()}register(type,definition){if(this.types.has(type))throw new Error("Type already registered: "+type);this.types.set(type,Object.freeze({...definition}))}get(type){return this.types.get(type)}has(type){return this.types.has(type)}entries(){return [...this.types.entries()]}}
