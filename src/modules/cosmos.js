@@ -1,0 +1,1 @@
+export const CosmosModule={id:"cosmos",version:"1.0.0",install(engine){engine.registry.register("cosmic.empty-space",{schemaVersion:1,create:p=>({name:p.name||"Genesisphere",kind:"space",metadata:{...p.metadata}})})}};
