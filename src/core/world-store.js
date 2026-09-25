@@ -7,5 +7,6 @@ export class WorldStore{
  has(id){return this.entities.has(id)}
  all(){return [...this.entities.values()]}
  byType(type){return this.all().filter(entity=>entity.type===type)}
- record(kind,details={}){const event=Object.freeze({kind,...details,at:Date.now()});this.events.push(event);return event}\n history(){return [...this.events]}
+ record(kind,details={}){const event=Object.freeze({kind,...details,at:Date.now()});this.events.push(event);return event}
+ history(){return [...this.events]}
 }
