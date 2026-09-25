@@ -1,4 +1,5 @@
-// Deterministic gameplay collisions for planets orbiting the same star.
+// Deterministic collisions and stellar ingestion, derived from orbital state.
+import{earthMassesToSolar,earthRadiusAU,effectiveStellarState,stellarRadiusAU}from"./stellar-state.js";
 export const SAME_ORBIT_TOLERANCE_AU=0.01;
 const TAU=Math.PI*2;
 const hash=value=>[...String(value)].reduce((sum,char)=>(31*sum+char.charCodeAt(0))>>>0,0);
@@ -15,10 +16,20 @@ function positionAt(planet,time){
  const angle=hash(planet.id)%628/100+(time/1000*36/period)*TAU;
  const axis=orbit.semiMajorAxisAU||1;
  const eccentricity=Math.min(.999,Math.max(0,orbit.eccentricity||0));
- return{x:Math.cos(angle)*axis,y:Math.sin(angle)*axis*Math.sqrt(1-eccentricity*eccentricity)};
+ const distance=axis*(1-eccentricity*eccentricity)/(1+eccentricity*Math.cos(angle));
+ return{x:Math.cos(angle)*distance,y:Math.sin(angle)*distance};
 }
 const impactRadiusAU=planet=>.08*Math.cbrt(Math.max(.01,planet.radiusEarth||1));
 
+function ingestPlanet(engine,planet,star,time){
+ const massEarth=Math.max(.01,planet.massEarth||1),addedMassSolar=earthMassesToSolar(massEarth);
+ if(planet.orbitId)engine.remove(planet.orbitId);
+ engine.remove(planet.id);
+ const event=Object.freeze({kind:"STELLAR_INGESTION",simulationTime:time,starId:star.id,planetId:planet.id,systemId:planet.systemId,massEarth,addedMassSolar,starMassSolarBefore:star.massSolar||1});
+ engine.world.record("STELLAR_INGESTION",event);
+ engine.bus.emit("star:ingested-planet",event);
+ return{kind:"STELLAR_INGESTION",starId:star.id,star,planet,massEarth,addedMassSolar,simulationTime:time,event};
+}
 function merge(engine,first,second,time){
  const firstMass=Math.max(.01,first.massEarth||1),secondMass=Math.max(.01,second.massEarth||1);
  const survivor=firstMass>=secondMass?first:second,absorbed=survivor===first?second:first;
@@ -66,6 +77,17 @@ export function createOrbitalCollisionSystem(engine,onCollision=()=>{}){
     const sampleTime=lastTime+elapsed*step/steps;
     const planets=engine.world.byType("cosmic.terrestrial-planet");
     const collided=new Set;
+    for(const planet of planets){
+     if(collided.has(planet.id)||!engine.world.has(planet.id))continue;
+     const rawStar=engine.world.get(planet.parentStarId);
+     if(!rawStar||rawStar.type!=="cosmic.star")continue;
+     const star=effectiveStellarState(engine,rawStar),point=positionAt(planet,sampleTime);
+     const orbit=planet.orbit||{},axis=orbit.semiMajorAxisAU||1,eccentricity=Math.min(.999,Math.max(0,orbit.eccentricity||0));
+     const contact=stellarRadiusAU(star)+earthRadiusAU(planet);
+     if(Math.hypot(point.x,point.y)>contact&&axis*(1-eccentricity)>contact)continue;
+     const impact=ingestPlanet(engine,planet,star,sampleTime);
+     collided.add(planet.id);impacts.push(impact);onCollision(impact);
+    }
     for(let i=0;i<planets.length;i++){
      const first=planets[i];
      if(collided.has(first.id)||!engine.world.has(first.id))continue;
