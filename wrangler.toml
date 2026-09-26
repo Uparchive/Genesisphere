@@ -1,0 +1,7 @@
+# Somente configuração local para Workers Static Assets.
+# Não cria banco, Durable Object, domínio, segredo ou implantação.
+name = "genesisphere"
+compatibility_date = "2026-09-25"
+
+[assets]
+directory = "."
