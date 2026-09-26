@@ -1,11 +1,13 @@
-import{classifyOrbit}from"../systems/stellar/habitability.js";import{findOrbitConflict}from"../systems/stellar/orbital-collisions.js";
+import{classifyOrbit}from"../systems/stellar/habitability.js";import{createBigBangController}from"../systems/stellar/big-bang.js";import{findOrbitConflict}from"../systems/stellar/orbital-collisions.js";
 const isEntity=(engine,id,type)=>Boolean(id&&engine.world.get(id)?.type===type);
 const template=(engine,id,category)=>engine.templates.get(id)?.category===category;
 const entityFromTemplate=(engine,type,templateId,input,extra={})=>engine.create(type,{...engine.templates.get(templateId).baseProperties,...input,templateId,...extra});
 
 export const CosmicPowersModule={
- id:"cosmic-powers",version:"1.1.0",
+ id:"cosmic-powers",version:"1.2.0",
  install(engine){
+  engine.bigBang=createBigBangController(engine);
+  engine.powers.register({id:"BIG_BANG",name:"Fazer Big Bang",version:"1.0.0",requirements:["universeId"],validate:({engine,input})=>isEntity(engine,input.universeId,"cosmic.empty-space")&&!engine.bigBang.status().active||"BIG_BANG requires an existing universe and no active expansion",execute:({engine,input})=>engine.bigBang.start({universeId:input.universeId,center:input.center||{x:.5,y:.5},seed:input.seed??Date.now()})});
   engine.powers.register({id:"CREATE_SYSTEM",name:"Criar sistema estelar",version:"1.0.0",requirements:["universeId"],validate:({engine,input})=>isEntity(engine,input.universeId,"cosmic.empty-space")||"CREATE_SYSTEM requires a valid universeId",execute:({engine,input})=>{const system=engine.create("cosmic.star-system",input);engine.bus.emit("system:created",system);return system}});
   engine.powers.register({id:"CREATE_STAR",name:"Criar estrela",version:"1.0.0",requirements:["systemId","templateId"],validate:({engine,input})=>isEntity(engine,input.systemId,"cosmic.star-system")&&template(engine,input.templateId,"star")||"CREATE_STAR requires a valid systemId and star template",execute:({engine,input})=>{const star=entityFromTemplate(engine,"cosmic.star",input.templateId,input,{systemId:input.systemId});engine.bus.emit("star:created",star);return star}});
   engine.powers.register({id:"CREATE_BLACK_HOLE",name:"Criar buraco negro",version:"1.0.0",requirements:["systemId","positionAU"],validate:({engine,input})=>isEntity(engine,input.systemId,"cosmic.star-system")&&Number.isFinite(input.massSolar??10)&&(input.massSolar??10)>0&&Number.isFinite(input.positionAU?.x)&&Number.isFinite(input.positionAU?.y)||"CREATE_BLACK_HOLE requires a system, positive mass, and AU coordinates",execute:({engine,input})=>{const blackHole=engine.create("cosmic.black-hole",{...input,massSolar:input.massSolar??10});engine.bus.emit("black-hole:created",blackHole);return blackHole}});
