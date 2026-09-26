@@ -88,10 +88,12 @@ function mergeStars(engine,first,second,time){
  });
  engine.remove(absorbed.id);
  const affectedPlanets=engine.world.byType("cosmic.terrestrial-planet").filter(planet=>planet.parentStarId===absorbed.id);
+ const updatedMass=updated.massSolar||1;
  for(const planet of affectedPlanets){
-  replaceEntity(engine,planet,{parentStarId:updated.id,orbit:{...planet.orbit,parentStarId:updated.id}});
+  const periodDays=365.25*Math.sqrt(Math.max(.001,planet.orbit?.semiMajorAxisAU||1)**3/Math.max(.01,updatedMass));
+  replaceEntity(engine,planet,{parentStarId:updated.id,orbit:{...planet.orbit,parentStarId:updated.id,periodDays}});
   const orbit=planet.orbitId&&engine.world.get(planet.orbitId);
-  if(orbit)replaceEntity(engine,orbit,{parentStarId:updated.id});
+  if(orbit)replaceEntity(engine,orbit,{parentStarId:updated.id,periodDays});
  }
  const event=Object.freeze({kind:"STELLAR_MERGER",simulationTime:time,systemId:survivor.systemId,starId:updated.id,remnantStarId:updated.id,absorbedStarId:absorbed.id,massSolar:totalMass,positionAU});
  engine.world.record("STELLAR_MERGER",event);

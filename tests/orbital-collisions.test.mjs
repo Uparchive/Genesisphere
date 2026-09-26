@@ -162,6 +162,7 @@ test("nearby stars merge and reparent planets from the absorbed star", () => {
   assert.equal(stars[0].id, "star-2");
   assert.equal(stars[0].massSolar, 3);
   assert.equal(mergedPlanet.parentStarId, "star-2");
+  assert.ok(mergedPlanet.orbit.periodDays < 365.25);
   assert.ok(engine.events.some(event => event.kind === "STELLAR_MERGER"));
 });
 
