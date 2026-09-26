@@ -223,5 +223,6 @@ test("an asteroid is destroyed by a planet impact while the planet survives", ()
   step(collisions);
   assert.equal(engine.world.has("rock"), false);
   assert.equal(engine.world.has("target"), true);
-  assert.ok(engine.events.some(event => event.kind === "ASTEROID_PLANET_IMPACT" && event.planetId === "target"));
+  assert.equal(engine.world.get("target").massEarth, 1.25);
+  assert.ok(engine.events.some(event => event.kind === "ASTEROID_PLANET_IMPACT" && event.planetMassEarthAfter === 1.25));
 });

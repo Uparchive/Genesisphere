@@ -180,10 +180,14 @@ function checkAsteroidImpacts(engine,previousTime,time,onCollision,impacts){
   if(hitType==="star")impact=ingestAsteroid(engine,asteroid,effectiveStellarState(engine,hit),time);
   else{
    engine.remove(asteroid.id);
-   const event=Object.freeze({kind:"ASTEROID_PLANET_IMPACT",simulationTime:time,systemId:asteroid.systemId,asteroidId:asteroid.id,planetId:hit.id,massEarth:asteroid.massEarth||0,positionAU:current});
+   const addedMassEarth=Math.max(0,asteroid.massEarth||0);
+   const massEarth=Math.max(.01,hit.massEarth||1)+addedMassEarth;
+   const radiusEarth=Math.cbrt(Math.max(.01,hit.radiusEarth||1)**3+addedMassEarth);
+   const planet=replaceEntity(engine,hit,{massEarth,radiusEarth,collisionCount:(hit.collisionCount||0)+1,lastCollisionAt:time});
+   const event=Object.freeze({kind:"ASTEROID_PLANET_IMPACT",simulationTime:time,systemId:asteroid.systemId,asteroidId:asteroid.id,planetId:planet.id,massEarth:addedMassEarth,planetMassEarthAfter:massEarth,positionAU:current});
    engine.world.record("ASTEROID_PLANET_IMPACT",event);
    engine.bus.emit("planet:asteroid-impact",event);
-   impact={kind:"ASTEROID_PLANET_IMPACT",asteroid,planet:hit,positionAU:current,simulationTime:time,event};
+   impact={kind:"ASTEROID_PLANET_IMPACT",asteroid,planet,positionAU:current,simulationTime:time,event};
   }
   impacts.push(impact);onCollision(impact);
  }
