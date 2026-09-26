@@ -19,7 +19,7 @@
 - Entidades recebem IDs via `crypto.randomUUID()`; o armazenamento congela superficialmente cada entidade. Não há importação/exportação, serialização, versionamento de saves nem restauração após recarregar a página.
 - O relógio de simulação atual (`simulationTime`, escala e pausa) pertence à sessão aberta no navegador. O loop de animação atualiza o tempo enquanto a página roda; não há execução offline nem agenda persistente.
 - As órbitas e colisões são calculadas pelos módulos estelares a partir de posições em AU e do tempo de simulação. No interior de cada sistema, estrelas, planetas e planetas orbitando estrelas diferentes são testados entre si; impactos deixam eventos no histórico em memória.
-- `Math.random()` também é usado para estrelas decorativas de fundo. Isso não deve ser confundido com dados canônicos do universo.
+- O campo estelar decorativo é gerado por `src/modules/infinite-space.js` a partir de células e coordenadas do universo, com sementes determinísticas. A câmera guarda o centro em coordenadas globais normalizadas; pan, zoom ancorado e conversão de tela usam transformações inversas, sem depender de limites do canvas. Redimensionar a janela ou sair e retornar a uma região preserva as mesmas estrelas.
 - A geografia de Astra-1 tem um atlas determinístico separado em `src/entities/astra-1/atlas/`; na versão observada, `features` está vazio e o renderer ainda desenha sua superfície independentemente do atlas.
 
 ### Modelo atual de entidades
@@ -34,7 +34,7 @@
 | Órbita | `cosmic.orbit`, ligada a sistema e estrela-mãe | Semieixo maior em AU, excentricidade e período |
 | Astra-1 | Módulo de entidade concreta, separado dos templates comuns | Atlas em longitude/latitude planetográficas, independente de pixels |
 
-As posições normalizadas continuam servindo à navegação/representação do universo. Estrelas dentro de um sistema também carregam `positionAU`, que coloca seus centros no mesmo referencial orbital dos planetas. Uma futura API deve preservar essa distinção e definir explicitamente a unidade e o referencial de cada novo campo.
+As posições normalizadas continuam servindo à navegação/representação do universo. Estrelas dentro de um sistema também carregam `positionAU`, que coloca seus centros no mesmo referencial orbital dos planetas. Uma futura API deve preservar essa distinção e definir explicitamente a unidade e o referencial de cada novo campo. A coordenada indicada na interface é obtida pela inversa da transformação câmera/tela, inclusive durante zoom e navegação dentro de um sistema. A malha decorativa se estende sob demanda a partir dessas coordenadas, sem mapa pré-gerado ou borda de renderização.
 
 ### Física gravitacional e eventos implementados
 
@@ -119,4 +119,4 @@ O Worker valida JSON, tamanho e versão de contrato; o Durable Object valida inv
 
 ## 5. Validação disponível
 
-Não há comando de build nem workflow de CI. `npm test` executa os testes de regressão de colisão com o test runner nativo do Node, sem dependências de projeto. Os testes cobrem criação do buraco negro, validação da massa, captura gravitacional, estabilidade de órbita, perturbações entre estrelas de sistemas vizinhos no mesmo universo, deflexão de asteroides, mudança térmica, colisões e isolamento entre universos. A configuração Wrangler/TOML também foi validada sintaticamente. Definir um comando de build junto da futura implementação do Worker.
+Não há comando de build nem workflow de CI. `npm test` executa os testes de regressão de colisão com o test runner nativo do Node, sem dependências de projeto. Os testes cobrem criação do buraco negro, validação da massa, captura gravitacional, estabilidade de órbita, perturbações entre estrelas de sistemas vizinhos no mesmo universo, deflexão de asteroides, mudança térmica, colisões, isolamento entre universos e transformações/determinismo do espaço infinito. A configuração Wrangler/TOML também foi validada sintaticamente. Definir um comando de build junto da futura implementação do Worker.
