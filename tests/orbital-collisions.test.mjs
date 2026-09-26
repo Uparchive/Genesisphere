@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createOrbitalCollisionSystem } from "../src/systems/stellar/orbital-collisions.js";
+import { asteroidPositionAt, createOrbitalCollisionSystem } from "../src/systems/stellar/orbital-collisions.js";
 import { effectiveStellarState } from "../src/systems/stellar/stellar-state.js";
 
 function createEngine(seed) {
@@ -108,7 +108,7 @@ test("a planet outside all stellar contact radii remains in orbit", () => {
   assert.equal(engine.events.some(event => event.kind === "STELLAR_INGESTION"), false);
 });
 
-test("overlapping planets orbiting the same star merge into one remnant", () => {
+test("overlapping planets shatter into moving asteroids with conserved mass", () => {
   // "Aa" and "BB" have the same deterministic orbital phase.
   const engine = createEngine([
     star("star-1"),
@@ -119,14 +119,19 @@ test("overlapping planets orbiting the same star merge into one remnant", () => 
 
   step(collisions);
 
-  const remnants = engine.world.byType("cosmic.terrestrial-planet");
+  const fragments = engine.world.byType("cosmic.asteroid");
   assert.equal(engine.events.filter(event => event.kind === "PLANET_COLLISION").length, 1);
-  assert.equal(remnants.length, 1);
-  assert.equal(remnants[0].massEarth, 3);
-  assert.equal(engine.world.get(remnants[0].orbitId)?.parentStarId, remnants[0].parentStarId);
+  assert.equal(engine.world.has("Aa"), false);
+  assert.equal(engine.world.has("BB"), false);
+  assert.equal(fragments.length, 8);
+  assert.ok(Math.abs(fragments.reduce((sum, fragment) => sum + fragment.massEarth, 0) - 3) < 1e-10);
+  const before = fragments[0].positionAU;
+  const after = asteroidPositionAt(fragments[0], 1016);
+  assert.notDeepEqual(after, before);
+  assert.equal(engine.events.find(event => event.kind === "PLANET_COLLISION").fragmentCount, 8);
 });
 
-test("planets orbiting different stars in one system collide and form a stable remnant", () => {
+test("planets orbiting different stars in one system shatter into asteroids", () => {
   const engine = createEngine([
     star("star-1", { positionAU: { x: 0, y: 0 } }),
     star("star-2", { positionAU: { x: 0.8, y: 0 } }),
@@ -137,13 +142,12 @@ test("planets orbiting different stars in one system collide and form a stable r
 
   step(collisions);
 
-  const remnants = engine.world.byType("cosmic.terrestrial-planet");
+  const fragments = engine.world.byType("cosmic.asteroid");
   const event = engine.events.find(item => item.kind === "PLANET_COLLISION");
-  assert.equal(remnants.length, 1);
+  assert.equal(engine.world.byType("cosmic.terrestrial-planet").length, 0);
+  assert.equal(fragments.length, 8);
   assert.equal(event?.firstParentStarId, "star-1");
   assert.equal(event?.secondParentStarId, "star-2");
-  assert.ok(engine.world.get(remnants[0].parentStarId));
-  assert.ok(engine.world.get(remnants[0].orbitId));
 });
 
 test("nearby stars merge and reparent planets from the absorbed star", () => {
@@ -191,4 +195,33 @@ test("stellar ingestion before a merger is folded into the merger baseline only 
   engine.world.record("STELLAR_MERGER", { starId: "star-1", massSolar: 2, at: 2, simulationTime: 2 });
 
   assert.equal(effectiveStellarState(engine, engine.world.get("star-1")).massSolar, 2);
+});
+
+const asteroid = (id, positionAU, velocityAUPerSecond, systemId = "system-1") => ({
+  id, type: "cosmic.asteroid", systemId, positionAU, velocityAUPerSecond,
+  epochSimulationTime: 0, massEarth: 0.25, radiusAU: 0.005
+});
+
+test("an asteroid is consumed when it crosses a star", () => {
+  const engine = createEngine([
+    star("star-1"),
+    asteroid("rock", { x: 0.5, y: 0 }, { x: -20, y: 0 })
+  ]);
+  const collisions = createOrbitalCollisionSystem(engine);
+  step(collisions);
+  assert.equal(engine.world.has("rock"), false);
+  assert.ok(engine.events.some(event => event.kind === "STELLAR_INGESTION" && event.asteroidId === "rock"));
+});
+
+test("an asteroid is destroyed by a planet impact while the planet survives", () => {
+  const engine = createEngine([
+    star("star-1"),
+    planet("target", 0.5, { phaseRadians: 0 }),
+    asteroid("rock", { x: 0.5, y: -1 }, { x: 0, y: 62.5 })
+  ]);
+  const collisions = createOrbitalCollisionSystem(engine);
+  step(collisions);
+  assert.equal(engine.world.has("rock"), false);
+  assert.equal(engine.world.has("target"), true);
+  assert.ok(engine.events.some(event => event.kind === "ASTEROID_PLANET_IMPACT" && event.planetId === "target"));
 });

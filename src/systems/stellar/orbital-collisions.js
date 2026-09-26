@@ -109,44 +109,84 @@ function nearestStar(engine,systemId,position){
  },null);
 }
 
-function mergePlanets(engine,first,second,time,position){
+const ASTEROID_FRAGMENT_COUNT=8;
+
+function planetVelocityAt(engine,planet,time){
+ const before=planetPositionAt(engine,planet,time-500),after=planetPositionAt(engine,planet,time+500);
+ return{x:after.x-before.x,y:after.y-before.y};
+}
+
+function shatterPlanets(engine,first,second,time,position){
  const firstMass=Math.max(.01,first.massEarth||1),secondMass=Math.max(.01,second.massEarth||1);
- const survivor=firstMass>=secondMass?first:second,absorbed=survivor===first?second:first;
- const collisionCount=(survivor.collisionCount||0)+(absorbed.collisionCount||0)+1;
- const massEarth=firstMass+secondMass;
- const radiusEarth=Math.cbrt(Math.max(.01,survivor.radiusEarth||1)**3+Math.max(.01,absorbed.radiusEarth||1)**3);
+ const totalMass=firstMass+secondMass,fragmentMass=totalMass/ASTEROID_FRAGMENT_COUNT;
+ const firstVelocity=planetVelocityAt(engine,first,time),secondVelocity=planetVelocityAt(engine,second,time);
+ const centerVelocity={x:(firstVelocity.x*firstMass+secondVelocity.x*secondMass)/totalMass,y:(firstVelocity.y*firstMass+secondVelocity.y*secondMass)/totalMass};
+ const relativeSpeed=Math.hypot(firstVelocity.x-secondVelocity.x,firstVelocity.y-secondVelocity.y);
+ const ejectionSpeed=Math.max(.00001,relativeSpeed*1.5);
+ const sourcePlanetIds=[first.id,second.id];
  for(const orbitId of new Set([first.orbitId,second.orbitId].filter(Boolean)))engine.remove(orbitId);
- engine.remove(absorbed.id);
- engine.remove(survivor.id);
- const host=nearestStar(engine,survivor.systemId,position);
- if(!host)throw new Error("Cannot resolve a parent star for the collision remnant");
- const hostPosition=starPositionAU(host),dx=position.x-hostPosition.x,dy=position.y-hostPosition.y;
- const semiMajorAxisAU=Math.max(.001,Math.hypot(dx,dy));
- const phaseRadians=Math.atan2(dy,dx);
- const hostMass=effectiveStellarState(engine,host).massSolar||1;
- const periodDays=365.25*Math.sqrt(semiMajorAxisAU**3/Math.max(.01,hostMass));
- const orbit=engine.create("cosmic.orbit",{systemId:survivor.systemId,parentStarId:host.id,semiMajorAxisAU,eccentricity:0,periodDays,phaseRadians});
- const remnant=engine.create("cosmic.terrestrial-planet",{
-  name:survivor.name+" Remanescente",
-  entityKey:survivor.entityKey,
-  kind:survivor.planetKind,
-  templateId:survivor.templateId,
-  systemId:survivor.systemId,
-  parentStarId:host.id,
-  orbitId:orbit.id,
-  orbit:{semiMajorAxisAU,eccentricity:0,periodDays,phaseRadians,parentStarId:host.id},
-  environment:survivor.environment,
-  massEarth,
-  radiusEarth,
-  atmosphere:survivor.atmosphere||absorbed.atmosphere,
-  life:"disrupted",
-  collisionCount,
-  lastCollisionAt:time
- });
- const event=Object.freeze({kind:"PLANET_COLLISION",at:time,systemId:survivor.systemId,firstPlanetId:first.id,secondPlanetId:second.id,survivorPlanetId:survivor.id,absorbedPlanetId:absorbed.id,remnantPlanetId:remnant.id,firstParentStarId:first.parentStarId,secondParentStarId:second.parentStarId,parentStarId:host.id,massEarth,radiusEarth,positionAU:position});
+ engine.remove(first.id);engine.remove(second.id);
+ const fragments=[];
+ for(let index=0;index<ASTEROID_FRAGMENT_COUNT;index++){
+  const angle=TAU*index/ASTEROID_FRAGMENT_COUNT+(hash(first.id+second.id)%628)/100;
+  const speed=ejectionSpeed*(.72+.08*(index%5));
+  const velocityAUPerSecond={x:centerVelocity.x+Math.cos(angle)*speed,y:centerVelocity.y+Math.sin(angle)*speed};
+  const offset=planetCollisionRadiusAU(first)+planetCollisionRadiusAU(second);
+  const positionAU={x:position.x+Math.cos(angle)*offset*.12,y:position.y+Math.sin(angle)*offset*.12};
+  fragments.push(engine.create("cosmic.asteroid",{name:"Fragmento de colisão",systemId:first.systemId,positionAU,velocityAUPerSecond,epochSimulationTime:time,massEarth:fragmentMass,radiusAU:(planetCollisionRadiusAU(first)+planetCollisionRadiusAU(second))/(2*Math.cbrt(ASTEROID_FRAGMENT_COUNT)),sourcePlanetIds,seed:hash(first.id+second.id+index)}));
+ }
+ const event=Object.freeze({kind:"PLANET_COLLISION",at:time,simulationTime:time,systemId:first.systemId,firstPlanetId:first.id,secondPlanetId:second.id,firstParentStarId:first.parentStarId,secondParentStarId:second.parentStarId,massEarth:totalMass,fragmentCount:fragments.length,fragmentIds:fragments.map(fragment=>fragment.id),positionAU:position});
  engine.world.record("PLANET_COLLISION",event);
  engine.bus.emit("planet:collision",event);
- return{kind:"PLANET_COLLISION",survivor,absorbed,remnant,position,event};
+ return{kind:"PLANET_COLLISION",first,second,fragments,position,event};
+}
+
+export function asteroidPositionAt(asteroid,time){
+ const elapsedSeconds=(time-(asteroid.epochSimulationTime??0))/1000;
+ return{x:asteroid.positionAU.x+asteroid.velocityAUPerSecond.x*elapsedSeconds,y:asteroid.positionAU.y+asteroid.velocityAUPerSecond.y*elapsedSeconds};
+}
+
+function ingestAsteroid(engine,asteroid,star,time){
+ const massEarth=Math.max(0,asteroid.massEarth||0),addedMassSolar=earthMassesToSolar(massEarth);
+ engine.remove(asteroid.id);
+ const event=Object.freeze({kind:"STELLAR_INGESTION",simulationTime:time,starId:star.id,asteroidId:asteroid.id,bodyType:"cosmic.asteroid",systemId:asteroid.systemId,massEarth,addedMassSolar,starMassSolarBefore:star.massSolar||1});
+ engine.world.record("STELLAR_INGESTION",event);
+ engine.bus.emit("star:ingested-asteroid",event);
+ return{kind:"ASTEROID_STELLAR_IMPACT",starId:star.id,star,asteroid,massEarth,positionAU:starPositionAU(star),simulationTime:time,event};
+}
+
+function checkAsteroidImpacts(engine,previousTime,time,onCollision,impacts){
+ const asteroids=engine.world.byType("cosmic.asteroid");
+ const planets=engine.world.byType("cosmic.terrestrial-planet");
+ const stars=engine.world.byType("cosmic.star");
+ for(const asteroid of asteroids){
+  if(!engine.world.has(asteroid.id))continue;
+  const previous=asteroidPositionAt(asteroid,previousTime),current=asteroidPositionAt(asteroid,time);
+  let hit=null,hitType=null,hitDistance=Infinity;
+  for(const star of stars){
+   if(!engine.world.has(star.id)||star.systemId!==asteroid.systemId)continue;
+   const center=starPositionAU(star);
+   const distance=originDistanceAlongSegment({x:previous.x-center.x,y:previous.y-center.y},{x:current.x-center.x,y:current.y-center.y});
+   if(distance<=STELLAR_COLLISION_RADIUS_AU+(asteroid.radiusAU||0)&&distance<hitDistance){hit=star;hitType="star";hitDistance=distance}
+  }
+  for(const planet of planets){
+   if(!engine.world.has(planet.id)||planet.systemId!==asteroid.systemId)continue;
+   const planetPrevious=planetPositionAt(engine,planet,previousTime),planetCurrent=planetPositionAt(engine,planet,time);
+   const distance=sweptDistance(previous,planetPrevious,current,planetCurrent);
+   if(distance<=planetCollisionRadiusAU(planet)+(asteroid.radiusAU||0)&&distance<hitDistance){hit=planet;hitType="planet";hitDistance=distance}
+  }
+  if(!hit)continue;
+  let impact;
+  if(hitType==="star")impact=ingestAsteroid(engine,asteroid,effectiveStellarState(engine,hit),time);
+  else{
+   engine.remove(asteroid.id);
+   const event=Object.freeze({kind:"ASTEROID_PLANET_IMPACT",simulationTime:time,systemId:asteroid.systemId,asteroidId:asteroid.id,planetId:hit.id,massEarth:asteroid.massEarth||0,positionAU:current});
+   engine.world.record("ASTEROID_PLANET_IMPACT",event);
+   engine.bus.emit("planet:asteroid-impact",event);
+   impact={kind:"ASTEROID_PLANET_IMPACT",asteroid,planet:hit,positionAU:current,simulationTime:time,event};
+  }
+  impacts.push(impact);onCollision(impact);
+ }
 }
 
 function mergeOverlappingStars(engine,time,onCollision,impacts){
@@ -202,7 +242,7 @@ function checkPlanetPlanetCollisions(engine,previousTime,time,onCollision,impact
    if(separation>planetCollisionRadiusAU(first)+planetCollisionRadiusAU(second))continue;
    const firstEnd=currentPositions.get(first.id),secondEnd=currentPositions.get(second.id);
    const position={x:(firstEnd.x+secondEnd.x)/2,y:(firstEnd.y+secondEnd.y)/2};
-   const impact=mergePlanets(engine,first,second,time,position);
+   const impact=shatterPlanets(engine,first,second,time,position);
    collided.add(first.id);collided.add(second.id);impacts.push(impact);onCollision(impact);
    break;
   }
@@ -223,6 +263,7 @@ export function createOrbitalCollisionSystem(engine,onCollision=()=>{}){
     const sampleTime=lastTime+stepDuration*step;
     const previousTime=sampleTime-stepDuration;
     mergeOverlappingStars(engine,sampleTime,onCollision,impacts);
+    checkAsteroidImpacts(engine,previousTime,sampleTime,onCollision,impacts);
     checkPlanetStarCollisions(engine,previousTime,sampleTime,onCollision,impacts);
     checkPlanetPlanetCollisions(engine,previousTime,sampleTime,onCollision,impacts);
    }

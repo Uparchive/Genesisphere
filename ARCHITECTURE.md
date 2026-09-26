@@ -40,9 +40,9 @@ As posições normalizadas continuam servindo à navegação/representação do 
 - A verificação é contínua no tempo simulado e considera o caminho entre amostras, reduzindo a chance de corpos atravessarem um ao outro entre quadros.
 - Estrelas do mesmo sistema têm contato sólido; duas estrelas em contato formam uma estrela remanescente, com massa combinada. Planetas da estrela absorvida passam a orbitar a remanescente.
 - Um planeta é absorvido por qualquer estrela do mesmo sistema que alcançar, não apenas pela estrela que o originou.
-- Planetas de estrelas diferentes no mesmo sistema também podem colidir. O remanescente recebe uma nova órbita em torno da estrela mais próxima do ponto de impacto.
+- Planetas de estrelas diferentes no mesmo sistema também podem colidir. A colisão destrói ambos e cria oito entidades `cosmic.asteroid`, dividindo entre elas a massa combinada; os fragmentos recebem vetores de velocidade determinísticos e não ficam presos a uma órbita.
 - O contato usa raios de colisão em unidades de jogo, alinhados à escala-base do renderer. Os resultados ficam no estado e no histórico do mundo; a colisão não abre mensagens de texto.
-- Sistemas estelares distintos são fronteiras independentes para colisões nesta versão.
+- Asteroides seguem trajetórias lineares em AU pelo referencial do sistema, sem limite de distância nem atração orbital nesta versão. Ao atingir uma estrela, são absorvidos e registrados como ingestão; ao atingir um planeta, o asteroide é destruído e o planeta permanece. A colisão entre asteroides não é simulada.\n- Sistemas estelares distintos são fronteiras independentes para colisões nesta versão.
 
 
 ## 2. Infraestrutura Cloudflare encontrada/preparada
