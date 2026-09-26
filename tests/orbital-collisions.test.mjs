@@ -379,3 +379,23 @@ test("a planet engulfed by a star does not displace the star", () => {
   assert.equal(engine.world.has("falling-planet"), false);
   assert.deepEqual(collisions.velocityOf("star-1"), { x: 0, y: 0 });
 });
+
+
+test("distant bodies outside the interaction radius do not add all-pairs gravity work", () => {
+  const isolated = createEngine([
+    star("primary", { positionAU: { x: 0, y: 0 } }),
+    planet("local-planet", 1, { phaseRadians: 0 })
+  ]);
+  const withDistantSystem = createEngine([
+    star("primary", { positionAU: { x: 0, y: 0 } }),
+    planet("local-planet", 1, { phaseRadians: 0 }),
+    star("distant-star", { positionAU: { x: 100, y: 0 }, massSolar: 100 })
+  ]);
+  const isolatedPhysics = createOrbitalCollisionSystem(isolated);
+  const distantPhysics = createOrbitalCollisionSystem(withDistantSystem);
+  isolatedPhysics.update(0);
+  distantPhysics.update(0);
+  isolatedPhysics.update(16);
+  distantPhysics.update(16);
+  assert.deepEqual(distantPhysics.velocityOf("local-planet"), isolatedPhysics.velocityOf("local-planet"));
+});

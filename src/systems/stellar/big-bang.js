@@ -2,8 +2,8 @@ import{habitableBandAU,classifyOrbit}from"./habitability.js";
 const CELL_SIZE=.18;
 const GENERATION_INTERVAL_MS=650;
 const FRONTIER_INTERVAL_MS=2200;
-const MAX_CELLS_PER_FRAME=2;
-const MAX_FRONTIER_STEPS_PER_FRAME=8;
+const MAX_CELLS_PER_FRAME=1;
+const MAX_FRONTIER_STEPS_PER_FRAME=1;
 
 function hashText(value){let hash=2166136261;for(const char of String(value)){hash^=char.charCodeAt(0);hash=Math.imul(hash,16777619)}return hash>>>0}
 function randomFor(seed){
@@ -124,20 +124,20 @@ export function createBigBangController(engine){
    engine.bus.emit("universe:big-bang-started",this.status());
    return this.status();
   },
-  update({center,bounds,deltaSimulationMs=0}={}){
+  update({center,bounds,deltaSimulationMs=0,deltaGenerationMs=deltaSimulationMs}={}){
    if(!process?.active)return this.status();
    updateLife(deltaSimulationMs);
    if(bounds)enqueueView(bounds);
    else if(center)enqueueView({left:center.x-CELL_SIZE,right:center.x+CELL_SIZE,top:center.y-CELL_SIZE,bottom:center.y+CELL_SIZE});
-   if(deltaSimulationMs>0){
-    process.frontierElapsedMs+=deltaSimulationMs;
+   if(deltaGenerationMs>0){
+    process.frontierElapsedMs=Math.min(FRONTIER_INTERVAL_MS*2,process.frontierElapsedMs+deltaGenerationMs);
     let steps=0;
     while(process.frontierElapsedMs>=FRONTIER_INTERVAL_MS&&steps++<MAX_FRONTIER_STEPS_PER_FRAME){
      process.frontierElapsedMs-=FRONTIER_INTERVAL_MS;
      const offset=spiral(process.spiralIndex++);
      enqueue(process.originCell.x+offset.x,process.originCell.y+offset.y);
     }
-    process.generationElapsedMs+=deltaSimulationMs;
+    process.generationElapsedMs=Math.min(GENERATION_INTERVAL_MS*MAX_CELLS_PER_FRAME,process.generationElapsedMs+deltaGenerationMs);
     const budget=Math.min(MAX_CELLS_PER_FRAME,Math.floor(process.generationElapsedMs/GENERATION_INTERVAL_MS));
     for(let index=0;index<budget&&queue.length;index++){
      process.generationElapsedMs-=GENERATION_INTERVAL_MS;

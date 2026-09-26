@@ -47,8 +47,8 @@ test("Big Bang creates deterministic systems, planets, black holes, and evolving
  second.usePower("BIG_BANG",{universeId:universeB.id,seed:"same-cosmos",center:{x:.5,y:.5}});
  first.bigBang.update({center:{x:.5,y:.5},bounds:view,deltaSimulationMs:100_000});
  second.bigBang.update({center:{x:.5,y:.5},bounds:view,deltaSimulationMs:100_000});
- assert.equal(first.bigBang.status().generatedCells,2,"generation is frame-budgeted even at accelerated time");
- for(let frame=0;frame<80;frame++){
+ assert.equal(first.bigBang.status().generatedCells,1,"generation is capped to one cell per rendered update");
+ for(let frame=0;frame<250;frame++){
   first.bigBang.update({center:{x:.5,y:.5},bounds:view,deltaSimulationMs:650});
   second.bigBang.update({center:{x:.5,y:.5},bounds:view,deltaSimulationMs:650});
  }

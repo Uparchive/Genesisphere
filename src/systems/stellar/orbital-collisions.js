@@ -9,6 +9,8 @@ const AU_PER_SYSTEM_COORDINATE=100;
 const FIXED_STEP_SECONDS=1/120;
 const MAX_STEPS_PER_UPDATE=2048;
 const SOFTENING_AU=.001;
+// Far-field forces are negligible for this game scale; this radius bounds N-body work in an infinite universe.
+const MAX_INTERACTION_DISTANCE_AU=64;
 const ORBIT_RENDER_SCALE_PX_PER_AU=125;
 const STAR_POSITION_AU_PER_NORMALIZED_UNIT=5;
 const STELLAR_COLLISION_RADIUS_AU=38/ORBIT_RENDER_SCALE_PX_PER_AU;
@@ -72,7 +74,7 @@ function liveEntities(engine){
 
 export function createGravitySystem(engine,onCollision=()=>{}){
  let lastTime=null;
- const states=new Map,trails=new Map,systemOrigins=new Map,habitability=new Map;
+ const states=new Map,trails=new Map,systemOrigins=new Map,habitability=new Map;let lastTrailAt=0;
  const systemEntity=systemId=>engine.world.get(systemId)?.type==="cosmic.star-system"?engine.world.get(systemId):null;
  function systemOriginAU(systemId){
   if(systemOrigins.has(systemId))return systemOrigins.get(systemId);
@@ -128,6 +130,26 @@ export function createGravitySystem(engine,onCollision=()=>{}){
   for(const entity of bodies){const group=gravityGroup(entity),items=groups.get(group)||[];items.push(entity);groups.set(group,items)}
   return groups.values();
  }
+ function* nearbyPairs(group,maxDistanceAU=MAX_INTERACTION_DISTANCE_AU){
+  const buckets=new Map,maxDistanceSquared=maxDistanceAU*maxDistanceAU;
+  for(let index=0;index<group.length;index++){
+   const state=states.get(group[index].id);if(!state)continue;
+   const cellX=Math.floor(state.x/maxDistanceAU),cellY=Math.floor(state.y/maxDistanceAU),key=cellX+","+cellY;
+   const items=buckets.get(key)||[];items.push(index);buckets.set(key,items);
+  }
+  for(let index=0;index<group.length;index++){
+   const first=group[index],a=states.get(first.id);if(!a)continue;
+   const cellX=Math.floor(a.x/maxDistanceAU),cellY=Math.floor(a.y/maxDistanceAU);
+   for(let offsetX=-1;offsetX<=1;offsetX++)for(let offsetY=-1;offsetY<=1;offsetY++){
+    for(const otherIndex of buckets.get((cellX+offsetX)+","+(cellY+offsetY))||[]){
+     if(otherIndex<=index)continue;
+     const second=group[otherIndex],b=states.get(second.id);if(!b)continue;
+     const dx=b.x-a.x,dy=b.y-a.y;
+     if(dx*dx+dy*dy<=maxDistanceSquared)yield [first,second];
+    }
+   }
+  }
+ }
  function receivesGravity(target,source,masses){
   if(target.type!=="cosmic.star")return true;
   if(source.type==="cosmic.black-hole")return true;
@@ -136,15 +158,12 @@ export function createGravitySystem(engine,onCollision=()=>{}){
  function accelerationFor(bodies){
   const acceleration=new Map(bodies.map(entity=>[entity.id,{x:0,y:0}]));
   const masses=new Map(bodies.map(entity=>[entity.id,entityMassSolar(engine,entity)]));
-  for(const group of groupBodies(bodies))for(let i=0;i<group.length;i++){
-   const first=group[i],a=states.get(first.id);
-   for(let j=i+1;j<group.length;j++){
-    const second=group[j],b=states.get(second.id),dx=b.x-a.x,dy=b.y-a.y,r2=dx*dx+dy*dy+SOFTENING_AU**2;
-    const inverseR3=1/(r2*Math.sqrt(r2)),factor=GRAVITATIONAL_CONSTANT_AU*inverseR3;
-    const aa=acceleration.get(first.id),ab=acceleration.get(second.id);
-    if(receivesGravity(first,second,masses)){aa.x+=factor*masses.get(second.id)*dx;aa.y+=factor*masses.get(second.id)*dy}
-    if(receivesGravity(second,first,masses)){ab.x-=factor*masses.get(first.id)*dx;ab.y-=factor*masses.get(first.id)*dy}
-   }
+  for(const group of groupBodies(bodies))for(const[first,second]of nearbyPairs(group)){
+   const a=states.get(first.id),b=states.get(second.id),dx=b.x-a.x,dy=b.y-a.y,r2=dx*dx+dy*dy+SOFTENING_AU**2;
+   const inverseR3=1/(r2*Math.sqrt(r2)),factor=GRAVITATIONAL_CONSTANT_AU*inverseR3;
+   const aa=acceleration.get(first.id),ab=acceleration.get(second.id);
+   if(receivesGravity(first,second,masses)){aa.x+=factor*masses.get(second.id)*dx;aa.y+=factor*masses.get(second.id)*dy}
+   if(receivesGravity(second,first,masses)){ab.x-=factor*masses.get(first.id)*dx;ab.y-=factor*masses.get(first.id)*dy}
   }
   return acceleration;
  }
@@ -234,10 +253,16 @@ export function createGravitySystem(engine,onCollision=()=>{}){
  }
  function resolveCollisions(bodies,before){
   const handled=new Set,now=lastTime??0;
-  for(const group of groupBodies(bodies))for(let i=0;i<group.length;i++){
-   const first=group[i];if(handled.has(first.id)||!engine.world.has(first.id))continue;
-   for(let j=i+1;j<group.length;j++){
-    const second=group[j];if(handled.has(second.id)||!engine.world.has(second.id))continue;
+  for(const group of groupBodies(bodies)){
+   let maxContactRadius=0,maxDisplacement=0;
+   for(const entity of group){
+    maxContactRadius=Math.max(maxContactRadius,contactRadiusAU(entity));
+    const state=states.get(entity.id),start=before.get(entity.id)||state;
+    if(state&&start)maxDisplacement=Math.max(maxDisplacement,Math.hypot(state.x-start.x,state.y-start.y));
+   }
+   const searchRadius=Math.max(MAX_INTERACTION_DISTANCE_AU,maxContactRadius*2+maxDisplacement*2);
+   for(const[first,second]of nearbyPairs(group,searchRadius)){
+    if(handled.has(first.id)||handled.has(second.id)||!engine.world.has(first.id)||!engine.world.has(second.id))continue;
     const a=states.get(first.id),b=states.get(second.id);if(!a||!b)continue;
     const firstStart=before.get(first.id)||a,secondStart=before.get(second.id)||b;
     const distance=sweptDistance(firstStart,secondStart,a,b),contact=contactRadiusAU(first)+contactRadiusAU(second);
@@ -261,15 +286,23 @@ export function createGravitySystem(engine,onCollision=()=>{}){
   }
  }
  function updateHabitability(){
-  const stars=engine.world.byType("cosmic.star");
-  for(const planet of engine.world.byType("cosmic.terrestrial-planet")){
+  const stars=engine.world.byType("cosmic.star"),planets=engine.world.byType("cosmic.terrestrial-planet"),buckets=new Map;
+  for(const star of stars){
+   const state=states.get(star.id);if(!state)continue;
+   const x=Math.floor(state.x/MAX_INTERACTION_DISTANCE_AU),y=Math.floor(state.y/MAX_INTERACTION_DISTANCE_AU),key=x+","+y;
+   const group=buckets.get(key)||[];group.push(star);buckets.set(key,group);
+  }
+  const rangeSquared=MAX_INTERACTION_DISTANCE_AU**2;
+  for(const planet of planets){
    const position=states.get(planet.id);if(!position)continue;
+   const cellX=Math.floor(position.x/MAX_INTERACTION_DISTANCE_AU),cellY=Math.floor(position.y/MAX_INTERACTION_DISTANCE_AU);
    let flux=0;
-   for(const star of stars){
+   for(let ox=-1;ox<=1;ox++)for(let oy=-1;oy<=1;oy++)for(const star of buckets.get((cellX+ox)+","+(cellY+oy))||[]){
     if(gravityGroup(star)!==gravityGroup(planet))continue;
     const starState=states.get(star.id);if(!starState)continue;
-    const distance=Math.max(.01,Math.hypot(position.x-starState.x,position.y-starState.y));
-    flux+=stellarLuminosity(effectiveStellarState(engine,star))/(distance*distance);
+    const dx=position.x-starState.x,dy=position.y-starState.y,distanceSquared=dx*dx+dy*dy;
+    if(distanceSquared>rangeSquared)continue;
+    flux+=stellarLuminosity(effectiveStellarState(engine,star))/Math.max(.0001,distanceSquared);
    }
    let thermalClass="MUITO FRIO";
    if(flux>2.2)thermalClass="MUITO QUENTE";
@@ -286,7 +319,8 @@ export function createGravitySystem(engine,onCollision=()=>{}){
   }
  }
  function appendTrails(){
-  for(const entity of liveEntities(engine)){
+  const now=Date.now();if(now-lastTrailAt<100)return;lastTrailAt=now;
+  for(const entity of engine.world.byType("cosmic.terrestrial-planet")){
    const state=states.get(entity.id);if(!state)continue;
    const trail=trails.get(entity.id)||[];trail.push({x:state.x,y:state.y});
    if(trail.length>180)trail.splice(0,trail.length-180);
