@@ -41,9 +41,7 @@ export function createBigBangController(engine){
  return Object.freeze({
   start({systemId,seed=Date.now(),bounds}={}){
    if(process?.active)return{...status(),alreadyActive:true};
-   const region=regionSystem(engine,systemId);if(!region)throw new Error("BIG_BANG requires an empty top-level region");
-   const occupied=engine.world.byType("cosmic.star").some(item=>item.systemId===systemId)||engine.world.byType("cosmic.terrestrial-planet").some(item=>item.systemId===systemId)||engine.world.byType("cosmic.black-hole").some(item=>item.systemId===systemId);
-   if(occupied)throw new Error("BIG_BANG requires an empty region");
+   const region=regionSystem(engine,systemId);if(!region)throw new Error("BIG_BANG requires a top-level region");
    const updated=region.regionId===region.id?region:persistRegion(engine,region,{bigBangEnabled:true});
    const visited=visitedByRegion.get(systemId)||new Set;visitedByRegion.set(systemId,visited);
    process={active:true,regionId:systemId,seed:String(seed),visited,systems:0,blackHoles:0,reason:null};

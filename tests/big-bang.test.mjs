@@ -30,14 +30,22 @@ function visitSquare(engine,region,side=18){
  for(let i=0;i<Math.ceil((side+1)**2/BIG_BANG_MAX_CELLS_PER_UPDATE)+5;i++)engine.bigBang.update({systemId:region.id,bounds});
  return bounds;
 }
-test("Big Bang starts only in an empty top-level region, never in a solar system",()=>{
+test("Big Bang starts in a top-level region and rejects nested solar systems",()=>{
  const engine=makeEngine(),{region}=createRegion(engine);
- assert.throws(()=>engine.usePower("BIG_BANG",{systemId:"missing"}),/top-level empty region/);
+ assert.throws(()=>engine.usePower("BIG_BANG",{systemId:"missing"}),/top-level region/);
  assert.equal(engine.usePower("BIG_BANG",{systemId:region.id,seed:"region-seed",bounds:{left:.5,right:.5,top:.5,bottom:.5}}).active,true);
  assert.equal(engine.world.get(region.id).regionId,region.id);
  assert.equal(engine.world.get(region.id).metadata.role,"galaxy-region");
  const solar=engine.create("cosmic.star-system",{universeId:region.id,parentSystemId:region.id,regionId:region.id});
- assert.throws(()=>engine.usePower("BIG_BANG",{systemId:solar.id}),/top-level empty region/);
+ assert.throws(()=>engine.usePower("BIG_BANG",{systemId:solar.id}),/top-level region/);
+});
+test("manual star, planet, and black hole powers work in Genesis before Big Bang",()=>{
+ const engine=makeEngine(),{region}=createRegion(engine);
+ const star=engine.usePower("CREATE_STAR",{systemId:region.id,templateId:"star.g-type",positionAU:{x:0,y:0}});
+ const planet=engine.usePower("CREATE_PLANET",{systemId:region.id,parentStarId:star.id,templateId:"planet.terrestrial",semiMajorAxisAU:1,periodDays:365.25});
+ const hole=engine.usePower("CREATE_BLACK_HOLE",{systemId:region.id,positionAU:{x:8,y:0}});
+ assert.equal(star.systemId,region.id);assert.equal(planet.planet.systemId,region.id);assert.equal(hole.systemId,region.id);
+ assert.equal(engine.usePower("BIG_BANG",{systemId:region.id,seed:"with-manual-bodies",bounds:{left:.5,right:.5,top:.5,bottom:.5}}).active,true);
 });
 test("Big Bang primes visible cells once and does nothing while the player remains still",()=>{
  const engine=makeEngine(),{region}=createRegion(engine),bounds={left:.5,right:.5+BIG_BANG_CELL_SIZE*.8,top:.5,bottom:.5+BIG_BANG_CELL_SIZE*.8};
