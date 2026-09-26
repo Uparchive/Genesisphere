@@ -35,15 +35,16 @@
 
 As posições normalizadas continuam servindo à navegação/representação do universo. Estrelas dentro de um sistema também carregam `positionAU`, que coloca seus centros no mesmo referencial orbital dos planetas. Uma futura API deve preservar essa distinção e definir explicitamente a unidade e o referencial de cada novo campo.
 
-### Regras de colisão implementadas
+### Física gravitacional e eventos implementados
 
-- A verificação é contínua no tempo simulado e considera o caminho entre amostras, reduzindo a chance de corpos atravessarem um ao outro entre quadros.
-- Estrelas do mesmo sistema têm contato sólido; duas estrelas em contato formam uma estrela remanescente, com massa combinada. Planetas da estrela absorvida passam a orbitar a remanescente.
-- Um planeta é absorvido por qualquer estrela do mesmo sistema que alcançar, não apenas pela estrela que o originou.
-- Planetas de estrelas diferentes no mesmo sistema também podem colidir. A colisão destrói ambos e cria oito entidades `cosmic.asteroid`, dividindo entre elas a massa combinada; os fragmentos recebem vetores de velocidade determinísticos e não ficam presos a uma órbita.
-- O contato usa raios de colisão em unidades de jogo, alinhados à escala-base do renderer. Os resultados ficam no estado e no histórico do mundo; a colisão não abre mensagens de texto.
-- Asteroides seguem trajetórias lineares em AU pelo referencial do sistema, sem limite de distância nem atração orbital nesta versão. Ao atingir uma estrela, são absorvidos e registrados como ingestão; ao atingir um planeta, o asteroide é destruído e sua massa é incorporada ao planeta. A colisão entre asteroides não é simulada.\n- Sistemas estelares distintos são fronteiras independentes para colisões nesta versão.
-
+- Estrelas, planetas e asteroides são simulados como corpos com massa em um plano 2D, sob gravidade Newtoniana de todos os demais corpos do mesmo universo. O cálculo usa aceleração mútua proporcional a massa/distância², integração Velocity-Verlet (função `createGravitySystem`) e passos fixos de 1/120 segundo simulado.
+- A massa usa massas solares para estrelas e massas terrestres convertidas para unidades solares para planetas/asteroides. As posições locais usam AU. Cada sistema estelar recebe uma origem calculada por sua coordenada normalizada, com escala de 100 AU por unidade; portanto estrelas de sistemas distintos dentro do mesmo universo podem atrair corpos e alterar órbitas. Universos diferentes permanecem isolados.
+- A constante gravitacional é escalada para as unidades aceleradas do jogo: uma órbita circular de 1 AU em torno de uma estrela de 1 massa solar conserva o período da animação anterior (período configurado em dias dividido por 36 em segundos simulados). A geometria orbital inicial usa semieixo, excentricidade e fase; depois da inicialização, a gravidade determina o movimento.
+- Estrelas também se movem umas às outras; estrelas próximas podem formar uma órbita binária, perturbar planetas e asteroides ou colidir. Passagens próximas de asteroides mudam suas velocidades e podem produzir um efeito de estilingue gravitacional.
+- O fluxo de energia dos planetas é recalculado pela soma da luminosidade de todas as estrelas do universo e pela lei do inverso do quadrado da distância. Quando a classe térmica muda, o planeta atualiza seu ambiente e registra `PLANET_HABITABILITY_CHANGED`.
+- O integrador detecta contatos ao longo de cada passo. Planetas absorvidos por estrelas são registrados; colisões entre estrelas formam uma remanescente; planetas em colisão se fragmentam em oito asteroides com massa total conservada. Asteroides absorvidos por estrelas ou planetas são removidos; sua massa aumenta a massa do corpo que os absorve. Colisões entre asteroides não são simuladas.
+- As trajetórias recentes são desenhadas como rastros sutis, para que perturbações sejam visíveis sem mensagens de alerta. O universo continua navegável; corpos podem se afastar sem limite de distância.
+- É um modelo de jogo simbólico e 2D: usa tempo reescalado e raios de contato visuais, não modela relatividade, marés, rotação, colisões elásticas nem a física de fragmentação em detalhe.
 
 ## 2. Infraestrutura Cloudflare encontrada/preparada
 
@@ -116,4 +117,4 @@ O Worker valida JSON, tamanho e versão de contrato; o Durable Object valida inv
 
 ## 5. Validação disponível
 
-Não há comando de build nem workflow de CI. `npm test` executa os testes de regressão de colisão com o test runner nativo do Node, sem dependências de projeto. Nesta correção, os testes verificam colisões planeta-estrela não hospedeira, sobrevivência fora do raio de contato, fusão de planetas da mesma ou de diferentes estrelas, fusão de estrelas, reparentalização de planetas e isolamento entre sistemas. A configuração Wrangler/TOML também foi validada sintaticamente. Definir um comando de build junto da futura implementação do Worker.
+Não há comando de build nem workflow de CI. `npm test` executa os testes de regressão de colisão com o test runner nativo do Node, sem dependências de projeto. Os testes cobrem estabilidade de órbita, perturbações entre estrelas de sistemas vizinhos no mesmo universo, deflexão gravitacional de asteroides, mudança de classe térmica, colisões e isolamento entre universos/sistemas sem universo compartilhado. A configuração Wrangler/TOML também foi validada sintaticamente. Definir um comando de build junto da futura implementação do Worker.

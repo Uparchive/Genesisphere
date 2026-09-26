@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { asteroidPositionAt, createOrbitalCollisionSystem } from "../src/systems/stellar/orbital-collisions.js";
+import { asteroidPositionAt, createOrbitalCollisionSystem, GRAVITATIONAL_CONSTANT_AU } from "../src/systems/stellar/orbital-collisions.js";
 import { effectiveStellarState } from "../src/systems/stellar/stellar-state.js";
 
 function createEngine(seed) {
@@ -225,4 +225,74 @@ test("an asteroid is destroyed by a planet impact while the planet survives", ()
   assert.equal(engine.world.has("target"), true);
   assert.equal(engine.world.get("target").massEarth, 1.25);
   assert.ok(engine.events.some(event => event.kind === "ASTEROID_PLANET_IMPACT" && event.planetMassEarthAfter === 1.25));
+});
+
+const system = (id, position, universeId = "universe-1") => ({
+  id, type: "cosmic.star-system", universeId, position
+});
+
+test("Newtonian gravity keeps a circular one-solar-mass orbit stable", () => {
+  const engine = createEngine([
+    system("system-1", { x: 0.5, y: 0.5 }),
+    star("star-1", { positionAU: { x: 0, y: 0 } }),
+    planet("planet-1", 1, { phaseRadians: 0 })
+  ]);
+  const physics = createOrbitalCollisionSystem(engine);
+  physics.update(0);
+  const initial = physics.positionOf("planet-1");
+  physics.update(10_146);
+  const after = physics.positionOf("planet-1");
+  assert.ok(Math.abs(GRAVITATIONAL_CONSTANT_AU - 0.3835) < 0.001);
+  assert.ok(Math.hypot(after.x - initial.x, after.y - initial.y) < 0.08);
+});
+
+test("a nearby star in another system of the same universe perturbs the orbit", () => {
+  const common = [
+    system("system-1", { x: 0.5, y: 0.5 }),
+    system("system-2", { x: 0.518, y: 0.5 }),
+    star("star-1", { systemId: "system-1", positionAU: { x: 0, y: 0 } }),
+    star("star-2", { systemId: "system-2", positionAU: { x: 0, y: 0 } }),
+    planet("planet-1", 1, { systemId: "system-1", parentStarId: "star-1", phaseRadians: 0 })
+  ];
+  const engine = createEngine(common);
+  const isolatedEngine = createEngine([
+    system("system-1", { x: 0.5, y: 0.5 }),
+    star("star-1", { systemId: "system-1", positionAU: { x: 0, y: 0 } }),
+    planet("planet-1", 1, { systemId: "system-1", parentStarId: "star-1", phaseRadians: 0 })
+  ]);
+  const physics = createOrbitalCollisionSystem(engine);
+  const isolated = createOrbitalCollisionSystem(isolatedEngine);
+  physics.update(0); isolated.update(0);
+  physics.update(500); isolated.update(500);
+  const position = physics.positionOf("planet-1");
+  const isolatedPosition = isolated.positionOf("planet-1");
+  assert.ok(Math.hypot(position.x - isolatedPosition.x, position.y - isolatedPosition.y) > 0.02);
+  assert.equal(engine.world.get("planet-1").environment.thermalClass, "MUITO QUENTE");
+  assert.ok(engine.events.some(event => event.kind === "PLANET_HABITABILITY_CHANGED"));
+});
+
+test("a near-miss asteroid is deflected by stellar gravity", () => {
+  const engine = createEngine([
+    star("star-1", { positionAU: { x: 0, y: 0 } }),
+    asteroid("rock", { x: -2, y: 0.45 }, { x: 2, y: 0 })
+  ]);
+  const physics = createOrbitalCollisionSystem(engine);
+  physics.update(0);
+  physics.update(2_000);
+  assert.equal(engine.world.has("rock"), true);
+  assert.ok(physics.velocityOf("rock").y < -0.1);
+});
+
+test("stars in neighboring systems attract and move toward each other", () => {
+  const engine = createEngine([
+    system("system-1", { x: 0.5, y: 0.5 }),
+    system("system-2", { x: 0.52, y: 0.5 }),
+    star("star-1", { systemId: "system-1", positionAU: { x: 0, y: 0 } }),
+    star("star-2", { systemId: "system-2", positionAU: { x: 0, y: 0 } })
+  ]);
+  const physics = createOrbitalCollisionSystem(engine);
+  physics.update(0);
+  physics.update(500);
+  assert.ok(physics.positionOf("star-1").x > 0);
+  assert.ok(physics.positionOf("star-2").x < 2);
 });
