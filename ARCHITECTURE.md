@@ -1,6 +1,6 @@
 # Genesisphere — Arquitetura atual e fundação Cloudflare
 
-**Estado desta missão:** auditoria e preparação local. Nenhum serviço remoto foi criado, nenhuma implantação foi feita e o comportamento do jogo não foi alterado.
+**Escopo:** auditoria arquitetural e proposta Cloudflare. A configuração remota continua inexistente; mudanças posteriores de gameplay estão documentadas separadamente.
 
 ## 1. Auditoria do repositório
 
@@ -18,7 +18,7 @@
 - `WorldStore` guarda entidades em um `Map` e eventos em um array. Criações e remoções produzem eventos, mas nada é gravado em disco ou enviado a um serviço remoto.
 - Entidades recebem IDs via `crypto.randomUUID()`; o armazenamento congela superficialmente cada entidade. Não há importação/exportação, serialização, versionamento de saves nem restauração após recarregar a página.
 - O relógio de simulação atual (`simulationTime`, escala e pausa) pertence à sessão aberta no navegador. O loop de animação atualiza o tempo enquanto a página roda; não há execução offline nem agenda persistente.
-- As órbitas e colisões são calculadas pelos módulos estelares a partir de propriedades físicas e do tempo de simulação. A colisão e ingestão estelar registram eventos no histórico em memória.
+- As órbitas e colisões são calculadas pelos módulos estelares a partir de posições em AU e do tempo de simulação. No interior de cada sistema, estrelas, planetas e planetas orbitando estrelas diferentes são testados entre si; impactos deixam eventos no histórico em memória.
 - `Math.random()` também é usado para estrelas decorativas de fundo. Isso não deve ser confundido com dados canônicos do universo.
 - A geografia de Astra-1 tem um atlas determinístico separado em `src/entities/astra-1/atlas/`; na versão observada, `features` está vazio e o renderer ainda desenha sua superfície independentemente do atlas.
 
@@ -33,7 +33,17 @@
 | Órbita | `cosmic.orbit`, ligada a sistema e estrela-mãe | Semieixo maior em AU, excentricidade e período |
 | Astra-1 | Módulo de entidade concreta, separado dos templates comuns | Atlas em longitude/latitude planetográficas, independente de pixels |
 
-As posições normalizadas de sistemas/estrelas são dados usados pela vista espacial atual, enquanto órbitas usam unidades físicas. Uma futura API deve preservar essa distinção e definir explicitamente a unidade e o referencial de cada novo campo.
+As posições normalizadas continuam servindo à navegação/representação do universo. Estrelas dentro de um sistema também carregam `positionAU`, que coloca seus centros no mesmo referencial orbital dos planetas. Uma futura API deve preservar essa distinção e definir explicitamente a unidade e o referencial de cada novo campo.
+
+### Regras de colisão implementadas
+
+- A verificação é contínua no tempo simulado e considera o caminho entre amostras, reduzindo a chance de corpos atravessarem um ao outro entre quadros.
+- Estrelas do mesmo sistema têm contato sólido; duas estrelas em contato formam uma estrela remanescente, com massa combinada. Planetas da estrela absorvida passam a orbitar a remanescente.
+- Um planeta é absorvido por qualquer estrela do mesmo sistema que alcançar, não apenas pela estrela que o originou.
+- Planetas de estrelas diferentes no mesmo sistema também podem colidir. O remanescente recebe uma nova órbita em torno da estrela mais próxima do ponto de impacto.
+- O contato usa raios de colisão em unidades de jogo, alinhados à escala-base do renderer. Os resultados ficam no estado e no histórico do mundo; a colisão não abre mensagens de texto.
+- Sistemas estelares distintos são fronteiras independentes para colisões nesta versão.
+
 
 ## 2. Infraestrutura Cloudflare encontrada/preparada
 
@@ -106,4 +116,4 @@ O Worker valida JSON, tamanho e versão de contrato; o Durable Object valida inv
 
 ## 5. Validação disponível
 
-Não há comando de build nem workflow de CI. `npm test` executa os testes de regressão de colisão com o test runner nativo do Node, sem dependências de projeto. Nesta correção, os testes verificam ingestão ao tocar a estrela na escala renderizada, sobrevivência fora do raio de contato, fusão e isolamento entre sistemas. A configuração Wrangler/TOML também foi validada sintaticamente. Definir um comando de build junto da futura implementação do Worker.
+Não há comando de build nem workflow de CI. `npm test` executa os testes de regressão de colisão com o test runner nativo do Node, sem dependências de projeto. Nesta correção, os testes verificam colisões planeta-estrela não hospedeira, sobrevivência fora do raio de contato, fusão de planetas da mesma ou de diferentes estrelas, fusão de estrelas, reparentalização de planetas e isolamento entre sistemas. A configuração Wrangler/TOML também foi validada sintaticamente. Definir um comando de build junto da futura implementação do Worker.

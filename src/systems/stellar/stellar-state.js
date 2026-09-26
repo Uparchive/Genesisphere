@@ -1,4 +1,4 @@
-// Stellar properties remain immutable; ingestion events derive the current stellar state.
+// Stellar properties are derived from immutable base entities and world events.
 const EARTH_MASSES_PER_SOLAR=332946;
 const stateCache=new WeakMap;
 
@@ -7,7 +7,11 @@ export function effectiveStellarState(engine,star){
  let cached=stateCache.get(engine);
  if(!cached||cached.version!==history.length){cached={version:history.length,states:new Map};stateCache.set(engine,cached)}
  if(cached.states.has(star.id))return cached.states.get(star.id);
- const ingestions=history.filter(event=>event.kind==="STELLAR_INGESTION"&&event.starId===star.id);
+ let baselineIndex=-1;
+ for(let i=history.length-1;i>=0;i--){
+  if(history[i].kind==="STELLAR_MERGER"&&history[i].starId===star.id){baselineIndex=i;break}
+ }
+ const ingestions=history.slice(baselineIndex+1).filter(event=>event.kind==="STELLAR_INGESTION"&&event.starId===star.id);
  if(!ingestions.length){cached.states.set(star.id,star);return star}
  const ingestedMassEarth=ingestions.reduce((sum,event)=>sum+(event.massEarth||0),0);
  const baseMass=Math.max(.01,star.massSolar||1),massSolar=baseMass+ingestedMassEarth/EARTH_MASSES_PER_SOLAR;
