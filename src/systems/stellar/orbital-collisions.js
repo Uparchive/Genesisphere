@@ -45,6 +45,7 @@ export function asteroidPositionAt(asteroid,time){
 }
 function entityMassSolar(engine,entity){
  if(entity.type==="cosmic.star")return Math.max(.0001,effectiveStellarState(engine,engine.world.get(entity.id)||entity).massSolar||1);
+ if(entity.type==="cosmic.black-hole")return Math.max(.01,entity.massSolar||10);
  if(entity.type==="cosmic.terrestrial-planet")return earthMassesToSolar(entity.massEarth||1);
  if(entity.type==="cosmic.asteroid")return earthMassesToSolar(entity.massEarth||0);
  return 0;
@@ -56,6 +57,7 @@ function contactRadiusAU(entity){
   return renderedRadiusPx/ORBIT_RENDER_SCALE_PX_PER_AU*Math.cbrt(Math.max(.01,entity.radiusEarth||1));
  }
  if(entity.type==="cosmic.asteroid")return Math.max(0,entity.radiusAU||0);
+ if(entity.type==="cosmic.black-hole")return Math.max(0,entity.captureRadiusAU||entity.eventHorizonRadiusAU||0);
  return 0;
 }
 function replaceEntity(engine,entity,changes){
@@ -65,7 +67,7 @@ function replaceEntity(engine,entity,changes){
  return updated;
 }
 function liveEntities(engine){
- return [...engine.world.byType("cosmic.star"),...engine.world.byType("cosmic.terrestrial-planet"),...engine.world.byType("cosmic.asteroid")];
+ return [...engine.world.byType("cosmic.star"),...engine.world.byType("cosmic.black-hole"),...engine.world.byType("cosmic.terrestrial-planet"),...engine.world.byType("cosmic.asteroid")];
 }
 
 export function createGravitySystem(engine,onCollision=()=>{}){
@@ -89,7 +91,7 @@ export function createGravitySystem(engine,onCollision=()=>{}){
   const entity=typeof entityOrId==="string"?engine.world.get(entityOrId):entityOrId;
   if(!entity)return null;
   const origin=systemOriginAU(entity.systemId);
-  if(entity.type==="cosmic.star")return{x:origin.x+(entity.positionAU?.x??((entity.position?.x??.5)-.5)*STAR_POSITION_AU_PER_NORMALIZED_UNIT),y:origin.y+(entity.positionAU?.y??((entity.position?.y??.5)-.5)*STAR_POSITION_AU_PER_NORMALIZED_UNIT)};
+  if(entity.type==="cosmic.star"||entity.type==="cosmic.black-hole")return{x:origin.x+(entity.positionAU?.x??((entity.position?.x??.5)-.5)*STAR_POSITION_AU_PER_NORMALIZED_UNIT),y:origin.y+(entity.positionAU?.y??((entity.position?.y??.5)-.5)*STAR_POSITION_AU_PER_NORMALIZED_UNIT)};
   if(entity.type==="cosmic.asteroid")return{x:origin.x+(entity.positionAU?.x??0),y:origin.y+(entity.positionAU?.y??0)};
   if(entity.type==="cosmic.terrestrial-planet"){
    const star=states.get(entity.parentStarId),relative=localPlanetPositionAt(entity,lastTime??0);
@@ -99,7 +101,7 @@ export function createGravitySystem(engine,onCollision=()=>{}){
  }
  function initialState(entity,time){
   const origin=systemOriginAU(entity.systemId);
-  if(entity.type==="cosmic.star"){
+  if(entity.type==="cosmic.star"||entity.type==="cosmic.black-hole"){
    const position=entity.positionAU||{x:((entity.position?.x??.5)-.5)*STAR_POSITION_AU_PER_NORMALIZED_UNIT,y:((entity.position?.y??.5)-.5)*STAR_POSITION_AU_PER_NORMALIZED_UNIT};
    const velocity=entity.velocityAUPerSecond||{x:0,y:0};
    return{x:origin.x+position.x,y:origin.y+position.y,vx:velocity.x||0,vy:velocity.y||0,group:gravityGroup(entity)};
@@ -188,6 +190,18 @@ export function createGravitySystem(engine,onCollision=()=>{}){
   engine.world.record("STELLAR_MERGER",event);engine.bus.emit("star:merged",event);
   onCollision({kind:"STELLAR_COLLISION",starId:updated.id,star:updated,survivor,absorbed,simulationTime:time,event});
  }
+ function absorbIntoBlackHole(body,blackHole,time){
+  const bodyState=states.get(body.id),holeState=states.get(blackHole.id),bodyMass=entityMassSolar(engine,body),holeMass=entityMassSolar(engine,blackHole),totalMass=bodyMass+holeMass;
+  const merged={x:(bodyState.x*bodyMass+holeState.x*holeMass)/totalMass,y:(bodyState.y*bodyMass+holeState.y*holeMass)/totalMass,vx:(bodyState.vx*bodyMass+holeState.vx*holeMass)/totalMass,vy:(bodyState.vy*bodyMass+holeState.vy*holeMass)/totalMass};
+  if(body.type==="cosmic.terrestrial-planet"&&body.orbitId)engine.remove(body.orbitId);
+  engine.remove(body.id);states.delete(body.id);trails.delete(body.id);
+  const origin=systemOriginAU(blackHole.systemId),eventHorizonRadiusAU=1.974e-8*totalMass,captureRadiusAU=Math.max(eventHorizonRadiusAU,.02*Math.cbrt(totalMass));
+  const updated=replaceEntity(engine,blackHole,{massSolar:totalMass,positionAU:{x:merged.x-origin.x,y:merged.y-origin.y},velocityAUPerSecond:{x:merged.vx,y:merged.vy},eventHorizonRadiusAU,captureRadiusAU});
+  states.set(updated.id,{...merged,group:gravityGroup(updated)});
+  const event=Object.freeze({kind:"BLACK_HOLE_ABSORPTION",simulationTime:time,systemId:updated.systemId,blackHoleId:updated.id,absorbedBodyId:body.id,absorbedBodyType:body.type,absorbedMassSolar:bodyMass,massSolarAfter:totalMass,eventHorizonRadiusAU,positionAU:{x:merged.x,y:merged.y}});
+  engine.world.record("BLACK_HOLE_ABSORPTION",event);engine.bus.emit("black-hole:absorbed",event);
+  onCollision({kind:"BLACK_HOLE_ABSORPTION",blackHole:updated,body,positionAU:event.positionAU,simulationTime:time,event});
+ }
  function shatterPlanets(first,second,time){
   const a=states.get(first.id),b=states.get(second.id),m1=entityMassSolar(engine,first),m2=entityMassSolar(engine,second),total=m1+m2;
   const totalEarth=Math.max(.01,first.massEarth||1)+Math.max(.01,second.massEarth||1);
@@ -227,7 +241,14 @@ export function createGravitySystem(engine,onCollision=()=>{}){
     const kinds=[first.type,second.type],star=kinds.includes("cosmic.star")?(first.type==="cosmic.star"?first:second):null;
     const planet=kinds.includes("cosmic.terrestrial-planet")?(first.type==="cosmic.terrestrial-planet"?first:second):null;
     const asteroid=kinds.includes("cosmic.asteroid")?(first.type==="cosmic.asteroid"?first:second):null;
-    if(first.type==="cosmic.star"&&second.type==="cosmic.star"){mergeStars(first,second,now);handled.add(first.id);handled.add(second.id)}
+    const blackHole=kinds.includes("cosmic.black-hole")?(first.type==="cosmic.black-hole"?first:second.type==="cosmic.black-hole"?second:null):null;
+    if(blackHole){
+     const body=blackHole===first?second:first;
+     if(body.type==="cosmic.black-hole"&&entityMassSolar(engine,body)>entityMassSolar(engine,blackHole))absorbIntoBlackHole(blackHole,body,now);
+     else absorbIntoBlackHole(body,blackHole,now);
+     handled.add(first.id);handled.add(second.id);
+    }
+    else if(first.type==="cosmic.star"&&second.type==="cosmic.star"){mergeStars(first,second,now);handled.add(first.id);handled.add(second.id)}
     else if(star&&planet){ingestPlanet(planet,star,now);handled.add(planet.id)}
     else if(star&&asteroid){ingestAsteroid(asteroid,star,now);handled.add(asteroid.id)}
     else if(planet&&asteroid){asteroidHitsPlanet(asteroid,planet,now);handled.add(asteroid.id)}

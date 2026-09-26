@@ -296,3 +296,25 @@ test("stars in neighboring systems attract and move toward each other", () => {
   assert.ok(physics.positionOf("star-1").x > 0);
   assert.ok(physics.positionOf("star-2").x < 2);
 });
+
+const blackHole = (id, positionAU, massSolar = 10, systemId = "system-1") => ({
+  id, type: "cosmic.black-hole", systemId, kind: "black-hole", positionAU,
+  velocityAUPerSecond: { x: 0, y: 0 }, massSolar,
+  eventHorizonRadiusAU: 1.974e-8 * massSolar,
+  captureRadiusAU: 0.02 * Math.cbrt(massSolar)
+});
+
+test("black holes attract nearby bodies and absorb bodies entering their capture radius", () => {
+  const engine = createEngine([
+    blackHole("hole", { x: 0, y: 0 }),
+    asteroid("falling-rock", { x: 0.02, y: 0 }, { x: 0, y: 0 }),
+    asteroid("passing-rock", { x: 1, y: 0 }, { x: 0, y: 0 })
+  ]);
+  const physics = createOrbitalCollisionSystem(engine);
+  physics.update(0);
+  physics.update(16);
+  assert.equal(engine.world.has("falling-rock"), false);
+  assert.ok(physics.velocityOf("passing-rock").x < 0);
+  assert.ok(engine.events.some(event => event.kind === "BLACK_HOLE_ABSORPTION" && event.absorbedBodyId === "falling-rock"));
+  assert.ok(engine.world.get("hole").massSolar > 10);
+});
