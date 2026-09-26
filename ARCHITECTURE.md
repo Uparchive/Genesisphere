@@ -7,7 +7,7 @@
 ### Aplicação e dependências
 
 - A aplicação é um site estático servido a partir de `index.html`, com módulos JavaScript nativos carregados por `<script type="module">`.
-- Não há `package.json`, lockfile, bundler, framework, scripts de build/teste, configuração de CI ou dependências npm declaradas.
+- Não há framework, bundler, lockfile, build script ou dependências npm. O `package.json` adicionado nesta correção só declara módulos ES e `npm test`, usando o test runner nativo do Node.
 - O desenho principal usa Canvas 2D; controles e HUD são elementos DOM definidos em `index.html`.
 - `src/app.js` compõe `GenesisEngine`, Cosmos, templates e poderes. Sistemas e renderizadores são importados separadamente pela página.
 - `wrangler.toml` é a única configuração Cloudflare preparada nesta missão. Configura somente a publicação futura dos arquivos estáticos atuais, sem Worker de API, bindings, IDs de recursos ou migrações.
@@ -106,4 +106,4 @@ O Worker valida JSON, tamanho e versão de contrato; o Durable Object valida inv
 
 ## 5. Validação disponível
 
-O repositório não tem manifesto de pacote, scripts, suíte de testes, comando de build nem workflow de CI. Portanto, não há testes/build do projeto para executar nesta etapa. A validação desta missão limita-se à revisão da árvore e dos módulos centrais, à conferência das referências de módulos/assets e à sintaxe da configuração Wrangler/TOML. Quando forem introduzidos scripts ou um Worker, definir comandos reproduzíveis de validação na mesma missão.
+Não há comando de build nem workflow de CI. `npm test` executa os testes de regressão de colisão com o test runner nativo do Node, sem dependências de projeto. Nesta correção, os testes verificam ingestão ao tocar a estrela na escala renderizada, sobrevivência fora do raio de contato, fusão e isolamento entre sistemas. A configuração Wrangler/TOML também foi validada sintaticamente. Definir um comando de build junto da futura implementação do Worker.

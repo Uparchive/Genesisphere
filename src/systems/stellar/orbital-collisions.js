@@ -1,7 +1,11 @@
 // Deterministic collisions and stellar ingestion, derived from orbital state.
-import{earthMassesToSolar,earthRadiusAU,effectiveStellarState,stellarRadiusAU}from"./stellar-state.js";
+import{earthMassesToSolar,effectiveStellarState}from"./stellar-state.js";
 export const SAME_ORBIT_TOLERANCE_AU=0.01;
 const TAU=Math.PI*2;
+// Keep gameplay contacts in the same base coordinate scale as the system renderer:
+// 125 px per AU and a nominal 38 px rendered star radius.
+const ORBIT_RENDER_SCALE_PX_PER_AU=125;
+const STELLAR_COLLISION_RADIUS_AU=38/ORBIT_RENDER_SCALE_PX_PER_AU;
 const hash=value=>[...String(value)].reduce((sum,char)=>(31*sum+char.charCodeAt(0))>>>0,0);
 
 export function findOrbitConflict(engine,{systemId,parentStarId,semiMajorAxisAU}){
@@ -19,7 +23,25 @@ function positionAt(planet,time){
  const distance=axis*(1-eccentricity*eccentricity)/(1+eccentricity*Math.cos(angle));
  return{x:Math.cos(angle)*distance,y:Math.sin(angle)*distance};
 }
-const impactRadiusAU=planet=>.08*Math.cbrt(Math.max(.01,planet.radiusEarth||1));
+
+function planetCollisionRadiusAU(planet){
+ const renderedRadiusPx=Math.max(7,planet.planetKind==="gas-giant"?15:10);
+ return renderedRadiusPx/ORBIT_RENDER_SCALE_PX_PER_AU*Math.cbrt(Math.max(.01,planet.radiusEarth||1));
+}
+
+function originDistanceAlongSegment(start,end){
+ const dx=end.x-start.x,dy=end.y-start.y,lengthSquared=dx*dx+dy*dy;
+ if(lengthSquared===0)return Math.hypot(start.x,start.y);
+ const t=Math.max(0,Math.min(1,-(start.x*dx+start.y*dy)/lengthSquared));
+ return Math.hypot(start.x+t*dx,start.y+t*dy);
+}
+
+function sweptDistance(firstStart,secondStart,firstEnd,secondEnd){
+ return originDistanceAlongSegment(
+  {x:firstStart.x-secondStart.x,y:firstStart.y-secondStart.y},
+  {x:firstEnd.x-secondEnd.x,y:firstEnd.y-secondEnd.y}
+ );
+}
 
 function ingestPlanet(engine,planet,star,time){
  const massEarth=Math.max(.01,planet.massEarth||1),addedMassSolar=earthMassesToSolar(massEarth);
@@ -72,19 +94,21 @@ export function createOrbitalCollisionSystem(engine,onCollision=()=>{}){
    if(time<=lastTime)return[];
    const elapsed=time-lastTime;
    const steps=Math.min(128,Math.max(1,Math.ceil(elapsed/16)));
+   const stepDuration=elapsed/steps;
    const impacts=[];
    for(let step=1;step<=steps;step++){
-    const sampleTime=lastTime+elapsed*step/steps;
+    const sampleTime=lastTime+stepDuration*step;
+    const previousTime=sampleTime-stepDuration;
     const planets=engine.world.byType("cosmic.terrestrial-planet");
     const collided=new Set;
     for(const planet of planets){
      if(collided.has(planet.id)||!engine.world.has(planet.id))continue;
      const rawStar=engine.world.get(planet.parentStarId);
      if(!rawStar||rawStar.type!=="cosmic.star")continue;
-     const star=effectiveStellarState(engine,rawStar),point=positionAt(planet,sampleTime);
-     const orbit=planet.orbit||{},axis=orbit.semiMajorAxisAU||1,eccentricity=Math.min(.999,Math.max(0,orbit.eccentricity||0));
-     const contact=stellarRadiusAU(star)+earthRadiusAU(planet);
-     if(Math.hypot(point.x,point.y)>contact&&axis*(1-eccentricity)>contact)continue;
+     const star=effectiveStellarState(engine,rawStar);
+     const previous=positionAt(planet,previousTime),current=positionAt(planet,sampleTime);
+     const contact=STELLAR_COLLISION_RADIUS_AU+planetCollisionRadiusAU(planet);
+     if(originDistanceAlongSegment(previous,current)>contact)continue;
      const impact=ingestPlanet(engine,planet,star,sampleTime);
      collided.add(planet.id);impacts.push(impact);onCollision(impact);
     }
@@ -94,9 +118,10 @@ export function createOrbitalCollisionSystem(engine,onCollision=()=>{}){
      for(let j=i+1;j<planets.length;j++){
       const second=planets[j];
       if(collided.has(second.id)||!engine.world.has(second.id)||first.systemId!==second.systemId||first.parentStarId!==second.parentStarId)continue;
-      const a=positionAt(first,sampleTime),b=positionAt(second,sampleTime);
-      const reach=impactRadiusAU(first)+impactRadiusAU(second);
-      if(Math.hypot(a.x-b.x,a.y-b.y)>reach)continue;
+      const reach=planetCollisionRadiusAU(first)+planetCollisionRadiusAU(second);
+      const previousFirst=positionAt(first,previousTime),previousSecond=positionAt(second,previousTime);
+      const currentFirst=positionAt(first,sampleTime),currentSecond=positionAt(second,sampleTime);
+      if(sweptDistance(previousFirst,previousSecond,currentFirst,currentSecond)>reach)continue;
       const impact=merge(engine,first,second,sampleTime);
       collided.add(first.id);collided.add(second.id);impacts.push(impact);onCollision(impact);
       break;
