@@ -14,7 +14,7 @@
 
 ### Motor, estado e persistência atuais
 
-- `GenesisEngine` mantém registries, módulos, barramento de eventos e `WorldStore) em memória.
+- `GenesisEngine` mantém registries, módulos, barramento de eventos e `WorldStore` em memória.
 - `WorldStore` guarda entidades em um `Map` e eventos em um array. Criações e remoções produzem eventos, mas nada é gravado em disco ou enviado a um serviço remoto.
 - Entidades recebem IDs via `crypto.randomUUID()`; o armazenamento congela superficialmente cada entidade. Não há importação/exportação, serialização, versionamento de saves nem restauração após recarregar a página.
 - O relógio de simulação atual (`simulationTime`, escala e pausa) pertence à sessão aberta no navegador. O loop de animação atualiza o tempo enquanto a página roda; não há execução offline nem agenda persistente.
