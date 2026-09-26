@@ -34,7 +34,7 @@ function cellSeed(x,y){
 /** Generate the same stars for the same world coordinates at any viewport size. */
 export function starsForView(center,width,height,zoom){
   if(!(width>0&&height>0&&zoom>0))return[];
-  const halfX=.5/zoom,halfY=height/(2*width*zoom);
+  const halfX=.5/zoom,halfY=.5/zoom;
   const left=center.x-halfX, right=center.x+halfX;
   const top=center.y-halfY, bottom=center.y+halfY;
   const minX=Math.floor(left/STAR_CELL_SIZE),maxX=Math.floor(right/STAR_CELL_SIZE);

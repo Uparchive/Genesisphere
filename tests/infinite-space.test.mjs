@@ -36,6 +36,14 @@ test("procedural stars are deterministic and preserve positions after leaving an
   assert.notDeepEqual(neighbor,first);
 });
 
+test("procedural stars cover the full visible height instead of a horizontal strip",()=>{
+  const width=1366,height=768,stars=starsForView({x:.527236,y:.487771},width,height,.6);
+  const bands=Array.from({length:8},(_,band)=>stars.filter(star=>star.y>=band*height/8&&star.y<(band+1)*height/8).length);
+  assert.ok(stars.some(star=>star.y<height*.08));
+  assert.ok(stars.some(star=>star.y>height*.92));
+  assert.ok(bands.every(count=>count>0));
+});
+
 test("field generation remains bounded for supported zoom and common viewport sizes",()=>{
   const stars=starsForView({x:1e9,y:-1e9},3840,2160,.55);
   assert.ok(stars.length>1000&&stars.length<10000);
