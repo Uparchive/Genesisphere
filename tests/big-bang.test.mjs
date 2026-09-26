@@ -3,24 +3,14 @@ import assert from"node:assert/strict";
 import{CosmosModule}from"../src/modules/cosmos.js";
 import{CosmicPowersModule}from"../src/powers/cosmic-powers.js";
 import{TemplateModule}from"../src/templates/template-module.js";
-import{BIG_BANG_MAX_ATTEMPTS,BIG_BANG_MAX_PLANETS_PER_SYSTEM,BIG_BANG_PLANET_CHANCE,BIG_BANG_PLANET_INTERVAL_MS}from"../src/systems/stellar/big-bang.js";
-
+import{BIG_BANG_BLACK_HOLE_CHANCE,BIG_BANG_CELL_SIZE,BIG_BANG_MAX_CELLS_PER_UPDATE,BIG_BANG_SYSTEM_CHANCE}from"../src/systems/stellar/big-bang.js";
 function makeEngine(){
- const definitions=new Map,entities=new Map,powers=new Map,templates=new Map,events=[];
- let id=0;
+ const definitions=new Map,entities=new Map,powers=new Map,templates=new Map,events=[];let id=0;
  const engine={
   registry:{register:(type,definition)=>definitions.set(type,definition),get:type=>definitions.get(type)},
   templates:{register:item=>templates.set(item.id,item),get:key=>templates.get(key)||null,all:category=>[...templates.values()].filter(item=>!category||item.category===category)},
-  world:{
-   get:key=>entities.get(key)||null,has:key=>entities.has(key),all:()=>[...entities.values()],
-   byType:type=>[...entities.values()].filter(item=>item.type===type),
-   add(item){const value=Object.freeze({...item});entities.set(value.id,value);events.push({kind:"ENTITY_CREATED",entity:value});return value},
-   remove(key){const value=entities.get(key)||null;entities.delete(key);if(value)events.push({kind:"ENTITY_DESTROYED",entity:value});return value},
-   record:(kind,details={})=>{const event=Object.freeze({kind,...details});events.push(event);return event},
-   history:()=>[...events]
-  },
-  bus:{emit:(kind,detail)=>events.push({kind,detail})},
-  powers:{register:power=>powers.set(power.id,power)},
+  world:{get:key=>entities.get(key)||null,has:key=>entities.has(key),all:()=>[...entities.values()],byType:type=>[...entities.values()].filter(item=>item.type===type),add(item){const value=Object.freeze({...item});entities.set(value.id,value);events.push({kind:"ENTITY_CREATED",entity:value});return value},remove(key){const value=entities.get(key)||null;entities.delete(key);if(value)events.push({kind:"ENTITY_DESTROYED",entity:value});return value},record:(kind,details={})=>{const event=Object.freeze({kind,...details});events.push(event);return event},history:()=>[...events]},
+  bus:{emit:(kind,detail)=>events.push({kind,detail})},powers:{register:power=>powers.set(power.id,power)},
   create(type,props={}){const def=definitions.get(type);if(!def)throw Error("Unknown type "+type);return engine.world.add({id:"entity-"+(++id),type,...def.create(props)})},
   remove:key=>engine.world.remove(key),
   usePower(key,input={}){const power=powers.get(key),valid=power.validate({engine,input});if(valid!==true)throw new Error(valid);return power.execute({engine,input})}
@@ -28,69 +18,59 @@ function makeEngine(){
  CosmosModule.install(engine);TemplateModule.install(engine);CosmicPowersModule.install(engine);
  return engine;
 }
-
-function createSelectedSystem(engine,{withStar=true,name="Selected"}={}){
- const universe=engine.create("cosmic.empty-space");
- const system=engine.usePower("CREATE_SYSTEM",{universeId:universe.id,name,position:{x:.5,y:.5}});
- const star=withStar?engine.create("cosmic.star",{name:"Primary",systemId:system.id,massSolar:1,positionAU:{x:0,y:0}}):null;
- return{universe,system,star};
+function createRegion(engine,name="Genesis"){
+ const universe=engine.create("cosmic.empty-space"),region=engine.usePower("CREATE_SYSTEM",{universeId:universe.id,name,position:{x:.5,y:.5}});
+ return{universe,region};
 }
-function tick(engine,systemId,count=1,deltaGenerationMs=BIG_BANG_PLANET_INTERVAL_MS){
- for(let i=0;i<count&&engine.bigBang.status().active;i++)engine.bigBang.update({systemId,deltaGenerationMs});
+function moveInto(engine,region,seed){
+ engine.usePower("BIG_BANG",{systemId:region.id,seed,bounds:{left:.5,right:.5,top:.5,bottom:.5}});
 }
-function generatedPlanets(engine,systemId){
- return engine.world.byType("cosmic.terrestrial-planet").filter(planet=>planet.systemId===systemId&&planet.metadata?.bigBangGenerated===true);
+function visitSquare(engine,region,side=18){
+ const bounds={left:.5,right:.5+(side+.5)*BIG_BANG_CELL_SIZE,top:.5,bottom:.5+(side+.5)*BIG_BANG_CELL_SIZE};
+ for(let i=0;i<Math.ceil((side+1)**2/BIG_BANG_MAX_CELLS_PER_UPDATE)+5;i++)engine.bigBang.update({systemId:region.id,bounds});
+ return bounds;
 }
-
-test("Big Bang requires a selected system with a star and only starts once",()=>{
- const engine=makeEngine(),{universe,system}=createSelectedSystem(engine,{withStar:false});
- assert.throws(()=>engine.usePower("BIG_BANG",{universeId:universe.id}),/selected star system/);
- assert.throws(()=>engine.usePower("BIG_BANG",{systemId:system.id}),/requires a star/);
- const star=engine.create("cosmic.star",{systemId:system.id,massSolar:1});
- const state=engine.usePower("BIG_BANG",{systemId:system.id,seed:"seed-1"});
- assert.equal(state.active,true);
- assert.equal(state.systemId,system.id);
- assert.throws(()=>engine.usePower("BIG_BANG",{systemId:system.id}),/already active/);
- assert.ok(engine.world.history().some(event=>event.kind==="BIG_BANG_STARTED"&&event.systemId===system.id));
- assert.ok(star.id);
+test("Big Bang starts only in an empty top-level region, never in a solar system",()=>{
+ const engine=makeEngine(),{region}=createRegion(engine);
+ assert.throws(()=>engine.usePower("BIG_BANG",{systemId:"missing"}),/top-level empty region/);
+ assert.equal(engine.usePower("BIG_BANG",{systemId:region.id,seed:"region-seed",bounds:{left:.5,right:.5,top:.5,bottom:.5}}).active,true);
+ assert.equal(engine.world.get(region.id).regionId,region.id);
+ assert.equal(engine.world.get(region.id).metadata.role,"galaxy-region");
+ const solar=engine.create("cosmic.star-system",{universeId:region.id,parentSystemId:region.id,regionId:region.id});
+ assert.throws(()=>engine.usePower("BIG_BANG",{systemId:solar.id}),/top-level empty region/);
 });
-
-test("Big Bang creates only a few rare, widely spaced planets inside the selected system",()=>{
- const first=makeEngine(),second=makeEngine(),a=createSelectedSystem(first),b=createSelectedSystem(second);
- assert.equal(BIG_BANG_MAX_PLANETS_PER_SYSTEM,3);
- assert.equal(BIG_BANG_PLANET_CHANCE,.04);
- assert.equal(BIG_BANG_PLANET_INTERVAL_MS,5000);
- first.usePower("BIG_BANG",{systemId:a.system.id,seed:"rare-cosmos"});
- second.usePower("BIG_BANG",{systemId:b.system.id,seed:"rare-cosmos"});
- first.bigBang.update({systemId:a.system.id,deltaGenerationMs:BIG_BANG_PLANET_INTERVAL_MS-1});
- assert.equal(first.bigBang.status().attempts,0,"no roll occurs before the rare interval");
- first.bigBang.update({systemId:a.system.id,deltaGenerationMs:1});
- assert.equal(first.bigBang.status().attempts,1);
- for(let i=0;i<BIG_BANG_MAX_ATTEMPTS&&first.bigBang.status().active;i++)first.bigBang.update({systemId:a.system.id,deltaGenerationMs:BIG_BANG_PLANET_INTERVAL_MS});
- for(let i=0;i<BIG_BANG_MAX_ATTEMPTS&&second.bigBang.status().active;i++)second.bigBang.update({systemId:b.system.id,deltaGenerationMs:BIG_BANG_PLANET_INTERVAL_MS});
- for(let round=0;round<4&&(generatedPlanets(first,a.system.id).length<BIG_BANG_MAX_PLANETS_PER_SYSTEM||generatedPlanets(second,b.system.id).length<BIG_BANG_MAX_PLANETS_PER_SYSTEM);round++){
-  if(generatedPlanets(first,a.system.id).length<BIG_BANG_MAX_PLANETS_PER_SYSTEM){first.usePower("BIG_BANG",{systemId:a.system.id,seed:"rare-retry-"+round});tick(first,a.system.id,BIG_BANG_MAX_ATTEMPTS)}
-  if(generatedPlanets(second,b.system.id).length<BIG_BANG_MAX_PLANETS_PER_SYSTEM){second.usePower("BIG_BANG",{systemId:b.system.id,seed:"rare-retry-"+round});tick(second,b.system.id,BIG_BANG_MAX_ATTEMPTS)}
- }
- const planets=generatedPlanets(first,a.system.id),planetTwin=generatedPlanets(second,b.system.id);
- assert.equal(planets.length,BIG_BANG_MAX_PLANETS_PER_SYSTEM,"generation has a hard lifetime limit for each system");
- assert.equal(first.world.byType("cosmic.star-system").length,1,"Big Bang must not create new systems");
- assert.ok(planets.every(planet=>planet.orbit.semiMajorAxisAU>=24&&planet.orbit.semiMajorAxisAU<=60));
- for(const parentStarId of new Set(planets.map(planet=>planet.parentStarId))){
-  const axes=planets.filter(planet=>planet.parentStarId===parentStarId).map(planet=>planet.orbit.semiMajorAxisAU).sort((x,y)=>x-y);
-  for(let i=1;i<axes.length;i++)assert.ok(axes[i]-axes[i-1]>=8,"new planets must be widely spaced");
- }
- assert.ok(planets.every(planet=>planet.systemId===a.system.id&&planet.parentStarId===a.star.id));
- assert.deepEqual(planetTwin.map(planet=>planet.orbit.semiMajorAxisAU),generatedPlanets(second,b.system.id).map(planet=>planet.orbit.semiMajorAxisAU),"the same seed gives the same gradual sequence");
- assert.throws(()=>first.usePower("BIG_BANG",{systemId:a.system.id,seed:"over-limit"}),/limit reached/);
+test("Big Bang primes visible cells once and does nothing while the player remains still",()=>{
+ const engine=makeEngine(),{region}=createRegion(engine),bounds={left:.5,right:.5+BIG_BANG_CELL_SIZE*.8,top:.5,bottom:.5+BIG_BANG_CELL_SIZE*.8};
+ moveInto(engine,region,"still-seed");
+ const before=engine.bigBang.status().visitedCells;
+ for(let i=0;i<120;i++)engine.bigBang.update({systemId:region.id,bounds});
+ assert.equal(engine.bigBang.status().visitedCells,before);
+ assert.equal(engine.world.byType("cosmic.star-system").length,1);
 });
-
-test("Big Bang pauses outside its selected system and ignores time acceleration backlog",()=>{
- const engine=makeEngine(),a=createSelectedSystem(engine),b=createSelectedSystem(engine,{name:"Other"});
- engine.usePower("BIG_BANG",{systemId:a.system.id,seed:"pause"});
- engine.bigBang.update({systemId:b.system.id,deltaGenerationMs:1_000_000});
- assert.equal(engine.bigBang.status().attempts,0,"a different viewed system cannot receive planets");
- engine.bigBang.update({systemId:a.system.id,deltaGenerationMs:1_000_000});
- assert.equal(engine.bigBang.status().attempts,1,"a large time step still produces at most one rarity roll per rendered update");
- assert.equal(engine.world.byType("cosmic.star-system").length,2);
+test("new explored cells create sparse nested solar systems and deterministic bodies",()=>{
+ const first=makeEngine(),second=makeEngine(),a=createRegion(first).region,b=createRegion(second).region;
+ moveInto(first,a,"shared-seed");moveInto(second,b,"shared-seed");
+ visitSquare(first,a,22);visitSquare(second,b,22);
+ const systems=first.world.byType("cosmic.star-system").filter(item=>item.parentSystemId===a.id);
+ const twins=second.world.byType("cosmic.star-system").filter(item=>item.parentSystemId===b.id);
+ assert.ok(systems.length>0,"the explored area should eventually contain rare systems");
+ assert.ok(systems.length<40,"solar systems remain sparse across hundreds of cells");
+ assert.equal(systems.length,twins.length);
+ assert.deepEqual(systems.map(item=>item.position),twins.map(item=>item.position));
+ assert.ok(systems.every(item=>item.regionId===a.id&&item.universeId===a.id));
+ assert.equal(first.world.byType("cosmic.star-system").filter(item=>!item.parentSystemId).length,1,"children stay inside Genesis instead of becoming galaxies");
+ for(const system of systems){
+  const stars=first.world.byType("cosmic.star").filter(item=>item.systemId===system.id),planets=first.world.byType("cosmic.terrestrial-planet").filter(item=>item.systemId===system.id);
+  assert.equal(stars.length,1);
+  assert.ok(planets.length>=2&&planets.length<=4);
+  assert.ok(planets.every(planet=>planet.metadata.origin==="big-bang"));
+ }
+});
+test("black holes are rarer than systems and remain in the region coordinate space",()=>{
+ assert.ok(BIG_BANG_BLACK_HOLE_CHANCE<BIG_BANG_SYSTEM_CHANCE);
+ assert.equal(BIG_BANG_CELL_SIZE,.45);
+ const engine=makeEngine(),{region}=createRegion(engine);moveInto(engine,region,"hole-seed");visitSquare(engine,region,35);
+ const holes=engine.world.byType("cosmic.black-hole").filter(item=>item.systemId===region.id);
+ assert.ok(holes.every(hole=>Number.isFinite(hole.positionAU.x)&&Number.isFinite(hole.positionAU.y)));
+ assert.ok(holes.length<engine.bigBang.status().visitedCells*.02);
 });

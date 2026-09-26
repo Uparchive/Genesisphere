@@ -84,7 +84,7 @@ export function createGravitySystem(engine,onCollision=()=>{}){
  }
  function gravityGroup(entity){
   const system=systemEntity(entity.systemId);
-  return system?.universeId||entity.universeId||entity.systemId||"universe";
+  return system?.regionId||system?.universeId||entity.regionId||entity.universeId||entity.systemId||"universe";
  }
  function positionOf(entityOrId){
   const id=typeof entityOrId==="string"?entityOrId:entityOrId.id;
