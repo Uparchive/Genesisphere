@@ -318,3 +318,64 @@ test("black holes attract nearby bodies and absorb bodies entering their capture
   assert.ok(engine.events.some(event => event.kind === "BLACK_HOLE_ABSORPTION" && event.absorbedBodyId === "falling-rock"));
   assert.ok(engine.world.get("hole").massSolar > 10);
 });
+
+test("planetary mass drives motion without moving its host star", () => {
+  const engine = createEngine([
+    star("star-1", { positionAU: { x: 0, y: 0 } }),
+    planet("gas-giant", 1, { massEarth: 318, planetKind: "gas-giant", phaseRadians: 0 })
+  ]);
+  const collisions = createOrbitalCollisionSystem(engine);
+
+  step(collisions);
+
+  assert.deepEqual(collisions.positionOf("star-1"), { x: 0, y: 0 });
+  assert.deepEqual(collisions.velocityOf("star-1"), { x: 0, y: 0 });
+  assert.notDeepEqual(collisions.velocityOf("gas-giant"), { x: 0, y: 0 });
+});
+
+test("a heavier star can gravitationally influence a lighter star", () => {
+  const engine = createEngine([
+    star("star-1", { positionAU: { x: 0, y: 0 }, massSolar: 1 }),
+    star("star-2", { positionAU: { x: 1, y: 0 }, massSolar: 2 })
+  ]);
+  const collisions = createOrbitalCollisionSystem(engine);
+
+  collisions.update(0);
+  collisions.update(16);
+
+  assert.notDeepEqual(collisions.velocityOf("star-1"), { x: 0, y: 0 });
+  assert.deepEqual(collisions.velocityOf("star-2"), { x: 0, y: 0 });
+});
+
+test("a black hole gravitationally influences a star", () => {
+  const engine = createEngine([
+    star("star-1", { positionAU: { x: 0, y: 0 } }),
+    {
+      id: "black-hole-1",
+      type: "cosmic.black-hole",
+      systemId: "system-1",
+      positionAU: { x: 1, y: 0 },
+      massSolar: 10,
+      captureRadiusAU: 0.01
+    }
+  ]);
+  const collisions = createOrbitalCollisionSystem(engine);
+
+  collisions.update(0);
+  collisions.update(16);
+
+  assert.notDeepEqual(collisions.velocityOf("star-1"), { x: 0, y: 0 });
+});
+
+test("a planet engulfed by a star does not displace the star", () => {
+  const engine = createEngine([
+    star("star-1", { positionAU: { x: 0, y: 0 } }),
+    planet("falling-planet", 0.3, { phaseRadians: 0 })
+  ]);
+  const collisions = createOrbitalCollisionSystem(engine);
+
+  step(collisions);
+
+  assert.equal(engine.world.has("falling-planet"), false);
+  assert.deepEqual(collisions.velocityOf("star-1"), { x: 0, y: 0 });
+});

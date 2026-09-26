@@ -128,6 +128,11 @@ export function createGravitySystem(engine,onCollision=()=>{}){
   for(const entity of bodies){const group=gravityGroup(entity),items=groups.get(group)||[];items.push(entity);groups.set(group,items)}
   return groups.values();
  }
+ function receivesGravity(target,source,masses){
+  if(target.type!=="cosmic.star")return true;
+  if(source.type==="cosmic.black-hole")return true;
+  return source.type==="cosmic.star"&&masses.get(source.id)>=masses.get(target.id);
+ }
  function accelerationFor(bodies){
   const acceleration=new Map(bodies.map(entity=>[entity.id,{x:0,y:0}]));
   const masses=new Map(bodies.map(entity=>[entity.id,entityMassSolar(engine,entity)]));
@@ -137,8 +142,8 @@ export function createGravitySystem(engine,onCollision=()=>{}){
     const second=group[j],b=states.get(second.id),dx=b.x-a.x,dy=b.y-a.y,r2=dx*dx+dy*dy+SOFTENING_AU**2;
     const inverseR3=1/(r2*Math.sqrt(r2)),factor=GRAVITATIONAL_CONSTANT_AU*inverseR3;
     const aa=acceleration.get(first.id),ab=acceleration.get(second.id);
-    aa.x+=factor*masses.get(second.id)*dx;aa.y+=factor*masses.get(second.id)*dy;
-    ab.x-=factor*masses.get(first.id)*dx;ab.y-=factor*masses.get(first.id)*dy;
+    if(receivesGravity(first,second,masses)){aa.x+=factor*masses.get(second.id)*dx;aa.y+=factor*masses.get(second.id)*dy}
+    if(receivesGravity(second,first,masses)){ab.x-=factor*masses.get(first.id)*dx;ab.y-=factor*masses.get(first.id)*dy}
    }
   }
   return acceleration;
@@ -157,8 +162,7 @@ export function createGravitySystem(engine,onCollision=()=>{}){
   return{x:(a.x*m1+b.x*m2)/total,y:(a.y*m1+b.y*m2)/total,vx:(a.vx*m1+b.vx*m2)/total,vy:(a.vy*m1+b.vy*m2)/total};
  }
  function ingestPlanet(planet,star,time){
-  const planetState=states.get(planet.id),starState=states.get(star.id),starMass=entityMassSolar(engine,star),planetMass=entityMassSolar(engine,planet),total=starMass+planetMass;
-  starState.vx=(starState.vx*starMass+planetState.vx*planetMass)/total;starState.vy=(starState.vy*starMass+planetState.vy*planetMass)/total;
+  // Planetary bodies do not displace stellar motion in this gameplay model.
   if(planet.orbitId)engine.remove(planet.orbitId);engine.remove(planet.id);states.delete(planet.id);trails.delete(planet.id);
   const massEarth=Math.max(.01,planet.massEarth||1),addedMassSolar=earthMassesToSolar(massEarth);
   const event=Object.freeze({kind:"STELLAR_INGESTION",simulationTime:time,starId:star.id,parentStarId:planet.parentStarId,planetId:planet.id,bodyType:"cosmic.terrestrial-planet",systemId:planet.systemId,massEarth,addedMassSolar,starMassSolarBefore:star.massSolar||1});
