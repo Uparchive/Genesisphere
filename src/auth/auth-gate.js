@@ -1,4 +1,4 @@
-import { authReady, cloudflareApiBaseUrl } from "./config.js";
+import { authReady, cloudflareApiBaseUrl, cloudSyncReady } from "./config.js";
 import { createFirebaseAuth } from "./firebase-client.js";
 
 const engine = globalThis.Genesisphere;
@@ -103,7 +103,9 @@ async function start() {
   const setBusy = busy => { for (const button of [submit, google, switchButton]) button.disabled = busy; };
   function mode() {
     title.textContent = creating ? "Crie seu universo" : "Entre no seu universo";
-    intro.textContent = creating ? "Sua conta guarda o universo que você construir." : "Acesse para continuar de onde parou.";
+    intro.textContent = cloudSyncReady
+      ? (creating ? "Sua conta guarda o universo que você construir." : "Acesse para continuar de onde parou.")
+      : (creating ? "Crie sua conta para começar. O universo ficará salvo neste navegador." : "Entre para continuar. O universo fica salvo neste navegador.");
     submit.textContent = creating ? "Criar conta" : "Entrar";
     password.autocomplete = creating ? "new-password" : "current-password";
     switchText.textContent = creating ? "Já tem uma conta?" : "Ainda não tem conta?";
@@ -114,11 +116,18 @@ async function start() {
     screen.hidden = false;
     account.hidden = true;
     document.querySelector("#game").inert = true;
-    const api = createWorldApi({ auth: { currentUser: user } });
+    const localKey = `genesisphere:universe:${encodeURIComponent(user.uid)}`;
     try {
-      const result = await api.load();
-      if (result.snapshot) restore(result.snapshot);
-      else await api.save(snapshot());
+      if (cloudSyncReady) {
+        const api = createWorldApi({ auth: { currentUser: user } });
+        const result = await api.load();
+        if (result.snapshot) restore(result.snapshot);
+        else await api.save(snapshot());
+      } else {
+        const saved = localStorage.getItem(localKey);
+        if (saved) restore(JSON.parse(saved));
+        else localStorage.setItem(localKey, JSON.stringify(snapshot()));
+      }
       activeUserId = user.uid;
       document.querySelector("#authUserLabel").textContent = user.displayName || user.email || "Meu universo";
       screen.hidden = true;
@@ -127,7 +136,7 @@ async function start() {
       unbindWorld.forEach(unbind => unbind());
       unbindWorld = [engine.bus.on("entity:created", scheduleSave), engine.bus.on("entity:destroyed", scheduleSave)];
       clearInterval(syncTimer);
-      syncTimer = window.setInterval(() => { if (activeUserId === user.uid) saveNow(createWorldApi(globalAuth)); }, 30000);
+      syncTimer = window.setInterval(() => { if (activeUserId === user.uid) saveNow(); }, 30000);
     } catch (reason) {
       activeUserId = null;
       screen.hidden = false;
@@ -135,11 +144,16 @@ async function start() {
       document.querySelector("#game").inert = false;
     }
   }
-  async function saveNow(api) {
+  async function saveNow() {
     if (!activeUserId || saveInFlight) return;
+    const user = globalAuth.auth.currentUser;
+    if (!user || user.uid !== activeUserId) return;
     saveInFlight = true;
-    try { await api.save(snapshot()); }
-    catch (reason) { console.error("Universe autosave failed", reason); }
+    try {
+      const value = snapshot();
+      if (cloudSyncReady) await createWorldApi(globalAuth).save(value);
+      else localStorage.setItem(`genesisphere:universe:${encodeURIComponent(user.uid)}`, JSON.stringify(value));
+    } catch (reason) { console.error("Universe autosave failed", reason); }
     finally { saveInFlight = false; }
   }
   function scheduleSave() {
@@ -147,7 +161,7 @@ async function start() {
     clearTimeout(saveTimer);
     saveTimer = window.setTimeout(() => {
       const user = globalAuth.auth.currentUser;
-      if (user?.uid === activeUserId) saveNow(createWorldApi(globalAuth));
+      if (user?.uid === activeUserId) saveNow();
     }, 1200);
   }
   let globalAuth;
@@ -179,7 +193,7 @@ async function start() {
   });
   switchButton.addEventListener("click", () => { creating = !creating; error.textContent = ""; mode(); });
   document.querySelector("#authLogout").addEventListener("click", async () => {
-    if (activeUserId) await saveNow(createWorldApi(globalAuth));
+    if (activeUserId) await saveNow();
     await globalAuth.logout();
   });
   mode();
