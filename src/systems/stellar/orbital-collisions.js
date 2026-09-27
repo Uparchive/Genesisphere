@@ -63,6 +63,7 @@ function contactRadiusAU(entity){
  return 0;
 }
 function replaceEntity(engine,entity,changes){
+ if(engine.updateEntity)return engine.updateEntity(entity.id,changes);
  engine.remove(entity.id);
  const updated=engine.world.add({...entity,...changes});
  engine.bus.emit("entity:created",updated);

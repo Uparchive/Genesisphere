@@ -159,7 +159,7 @@ async function start() {
       account.hidden = false;
       document.querySelector("#game").inert = false;
       unbindWorld.forEach(unbind => unbind());
-      unbindWorld = [engine.bus.on("entity:created", scheduleSave), engine.bus.on("entity:destroyed", scheduleSave)];
+      unbindWorld = [engine.bus.on("entity:created", scheduleSave), engine.bus.on("entity:updated", scheduleSave), engine.bus.on("entity:destroyed", scheduleSave)];
       clearInterval(syncTimer);
       syncTimer = window.setInterval(() => { if (activeUserId === user.uid) saveNow(); }, 30000);
     } catch (reason) {

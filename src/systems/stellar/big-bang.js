@@ -8,7 +8,7 @@ function randomFor(seed){let state=seed>>>0;return()=>{state+=0x6d2b79f5;let val
 function regionSystem(engine,id){const item=engine.world.get(id);return item?.type==="cosmic.star-system"&&item.parentSystemId==null?item:null}
 function cellRange(bounds,origin){const left=Math.min(bounds.left,bounds.right),right=Math.max(bounds.left,bounds.right),top=Math.min(bounds.top,bounds.bottom),bottom=Math.max(bounds.top,bounds.bottom);return{x0:Math.floor((left-origin.x)/BIG_BANG_CELL_SIZE),x1:Math.floor((right-origin.x)/BIG_BANG_CELL_SIZE),y0:Math.floor((top-origin.y)/BIG_BANG_CELL_SIZE),y1:Math.floor((bottom-origin.y)/BIG_BANG_CELL_SIZE)}}
 function boundsCells(bounds,origin){const range=cellRange(bounds,origin),cells=[];for(let x=range.x0;x<=range.x1;x++)for(let y=range.y0;y<=range.y1;y++)cells.push({x,y,key:x+","+y});return cells}
-function persistRegion(engine,region,metadata){const next=Object.freeze({...region,regionId:region.id,metadata:Object.freeze({...region.metadata,...metadata,role:"galaxy-region"})});engine.world.remove(region.id);return engine.world.add(next)}
+function persistRegion(engine,region,metadata){const changes={regionId:region.id,metadata:Object.freeze({...region.metadata,...metadata,role:"galaxy-region"})};if(engine.updateEntity)return engine.updateEntity(region.id,changes);engine.world.remove(region.id);return engine.world.add({...region,...changes})}
 function addSystem(engine,region,cell,random,seed){
  const starTemplates=engine.templates.all("star"),planetTemplates=engine.templates.all("planet");
  if(!starTemplates.length||!planetTemplates.length)return null;

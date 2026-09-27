@@ -5,6 +5,7 @@ export class WorldStore{
  constructor(){this.entities=new Map();this.events=[]}
  add(entity){if(this.entities.has(entity.id))throw new Error("Entity id already exists");const{id,type,schemaVersion=1,createdAt=Date.now(),components,...properties}=entity;const frozen=createEntityRecord({id,type,schemaVersion,createdAt,properties,components});this.entities.set(frozen.id,frozen);this.events.push(Object.freeze({kind:"ENTITY_CREATED",entity:frozen,at:Date.now()}));return frozen}
  remove(id){const entity=this.entities.get(id);if(!entity)return null;this.entities.delete(id);this.events.push(Object.freeze({kind:"ENTITY_DESTROYED",entity,at:Date.now()}));return entity}
+ update(id,changes){const entity=this.entities.get(id);if(!entity)return null;const updated=createEntityRecord({id:entity.id,type:entity.type,schemaVersion:entity.schemaVersion,createdAt:entity.createdAt,properties:{...entity,...changes},components:entity.components});this.entities.set(id,updated);this.events.push(Object.freeze({kind:"ENTITY_UPDATED",entity:updated,at:Date.now()}));return updated}
  get(id){return this.entities.get(id)}
  has(id){return this.entities.has(id)}
  all(){return [...this.entities.values()]}

@@ -23,21 +23,21 @@ export class UniverseState {
 }
 
 /** Compatibility surface for the current UI and authentication adapter. */
-export function createLegacyUniverseAdapter(state) {
+export function createLegacyUniverseAdapter(state, dispatch = null) {
   return Object.freeze({
     state,
     world: state.world,
     get simulationTime() { return state.simulationTime; },
-    set simulationTime(value) { state.setSimulationTime(value); },
+    set simulationTime(value) { if (dispatch) dispatch({ type: "SetSimulationTime", value }); else state.setSimulationTime(value); },
     get timeScale() { return state.timeScale; },
-    set timeScale(value) { state.setTimeScale(value); },
+    set timeScale(value) { if (dispatch) dispatch({ type: "SetTimeScale", value }); else state.setTimeScale(value); },
     get paused() { return state.paused; },
-    set paused(value) { state.paused = Boolean(value); },
+    set paused(value) { if (dispatch) dispatch({ type: "SetPaused", value }); else state.paused = Boolean(value); },
     getSimulationTime: () => state.simulationTime,
-    setSimulationTime: value => state.setSimulationTime(value),
+    setSimulationTime: value => dispatch ? dispatch({ type: "SetSimulationTime", value }) : state.setSimulationTime(value),
     getPaused: () => state.paused,
-    setPaused: value => { state.paused = Boolean(value); return state.paused; },
+    setPaused: value => dispatch ? dispatch({ type: "SetPaused", value }) : (state.paused = Boolean(value)),
     getTimeScale: () => state.timeScale,
-    setTimeScale: value => state.setTimeScale(value)
+    setTimeScale: value => dispatch ? dispatch({ type: "SetTimeScale", value }) : state.setTimeScale(value)
   });
 }
