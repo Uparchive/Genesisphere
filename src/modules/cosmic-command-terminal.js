@@ -13,3 +13,16 @@ export function findNearestStarInRegion({engine,collisions,regionId,coordinates,
  }
  return nearest?{ok:true,...nearest,coordinates:{x:.5+nearest.position.x/100,y:.5+nearest.position.y/100}}:{ok:false,reason:"no-stars"};
 }
+
+export function executeCosmicCommand({raw,engine,collisions,coordinates,bigBangStatus}={}){
+ const command=String(raw??"").trim(),normalized=command.startsWith("/")?command:"/"+command,parts=normalized.toLowerCase().split(/\s+/);
+ if(!["/coordenada","/coordinate"].includes(parts[0])||parts[1]!=="estrela"||parts.length!==2){
+  return{ok:false,reason:"invalid-command",command:normalized,message:"Use: /coordenada estrela"};
+ }
+ const regionId=bigBangStatus?.active?bigBangStatus.regionId:null;
+ const result=findNearestStarInRegion({engine,collisions,regionId,coordinates,bigBangStatus});
+ if(!result.ok){
+  return{...result,command:normalized,message:result.reason==="no-stars"?"Nenhuma estrela foi gerada nesta região ainda.":"Ative o Big Bang e entre na região Genesis para usar este comando."};
+ }
+ return{...result,command:normalized};
+}

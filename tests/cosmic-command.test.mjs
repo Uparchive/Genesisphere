@@ -1,6 +1,6 @@
 import test from"node:test";
 import assert from"node:assert/strict";
-import{findNearestStarInRegion}from"../src/modules/cosmic-command-terminal.js";
+import{executeCosmicCommand,findNearestStarInRegion}from"../src/modules/cosmic-command-terminal.js";
 const region={id:"region",regionId:"region"},solar={id:"solar",regionId:"region"},other={id:"other",regionId:"other"};
 function context({active=true,regionId="region"}={}){
  const systems=new Map([[region.id,region],[solar.id,solar],[other.id,other]]),stars=[
@@ -21,4 +21,18 @@ test("does not show a star unless Big Bang is active in this region",()=>{
 });
 test("reports when this region has no generated stars",()=>{
  const input=context();input.engine.world.byType=()=>[];assert.deepEqual(findNearestStarInRegion(input),{ok:false,reason:"no-stars"});
+});
+test("dispatches the supported coordinate-star command and its English alias",()=>{
+ const input=context();
+ const localized=executeCosmicCommand({...input,raw:"coordenada estrela"});
+ assert.equal(localized.ok,true);assert.equal(localized.command,"/coordenada estrela");assert.equal(localized.star.id,"near");
+ const english=executeCosmicCommand({...input,raw:"/coordinate estrela"});
+ assert.equal(english.ok,true);assert.equal(english.command,"/coordinate estrela");
+});
+test("rejects unsupported commands and returns clear inactive/no-star messages",()=>{
+ const input=context();
+ assert.deepEqual(executeCosmicCommand({...input,raw:"/planeta marte"}),{ok:false,reason:"invalid-command",command:"/planeta marte",message:"Use: /coordenada estrela"});
+ assert.match(executeCosmicCommand({...input,raw:"/coordenada estrela",bigBangStatus:{active:false,regionId:"region"}}).message,/Ative o Big Bang/);
+ input.engine.world.byType=()=>[];
+ assert.match(executeCosmicCommand({...input,raw:"/coordenada estrela"}).message,/Nenhuma estrela/);
 });

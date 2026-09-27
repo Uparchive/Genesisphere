@@ -2,6 +2,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "build": "node scripts/validate-source.mjs",
+    "check": "npm run build && npm test"
   }
 }
