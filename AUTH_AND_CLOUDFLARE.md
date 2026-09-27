@@ -6,7 +6,7 @@
 - O navegador recebe um Firebase ID token e o envia ao Worker. O Worker valida assinatura, emissor, projeto, validade e UID antes de encaminhar a solicitação.
 - O `uid` autenticado escolhe o Durable Object; o navegador não envia um ID de proprietário. Cada pessoa recebe um universo isolado em SQLite.
 - O estado serializado da engine e da física fica no Durable Object. Enquanto a sessão estiver ativa, o navegador sincroniza o estado a cada 30 segundos. Após a sessão ficar inativa, alarmes do Durable Object avançam relógio, gravidade e colisões em blocos curtos, inclusive sem uma aba aberta.
-- O modo atual permanece como demonstração até `authReady` ser habilitado; não há configuração Firebase ou URL do Worker neste repositório.
+- O Firebase autentica as contas assim que a configuração Web está ativa. Enquanto a URL do Worker estiver vazia, cada conta salva seu universo no `localStorage` deste navegador; sincronização entre dispositivos começa quando a API Cloudflare for publicada e configurada.
 
 Firebase é a autoridade de contas e autenticação. O SQLite do Durable Object é a autoridade do estado do jogo. Não existe cópia de credenciais ou senha no banco da Cloudflare.
 
@@ -38,7 +38,7 @@ O custo de alarmes e CPU cresce com o número de universos ativos e com o trabal
 
 ## Limites conhecidos
 
-- As chaves Firebase e o Worker são requisitos externos ainda não fornecidos; sem configurá-los, o login fica inativo e o site continua no modo atual.
+- A configuração Web do Firebase está ativa, e o login está disponível. O Worker ainda precisa ser publicado e configurado para salvar o universo na nuvem e sincronizá-lo entre dispositivos.
 - A API foi configurada como Worker independente porque GitHub Pages está hospedado em `github.io`; o `workers.dev` funciona como endpoint HTTPS separado com CORS estrito.
 - Os snapshots iniciais serializam as entidades/eventos e o estado privado do integrador. A compatibilidade futura de saves precisa de migrações explícitas por versão.
 - A sessão é mantida pelo Firebase no navegador; não há recuperação de senha nem verificação obrigatória de e-mail nesta primeira etapa.
