@@ -10,7 +10,7 @@ export const firebaseConfig = {
 
 // Set this to the deployed Cloudflare Worker base URL (for example,
 // https://genesisphere-api.<account>.workers.dev). Keep empty until configured.
-export const cloudflareApiBaseUrl = "";
+export const cloudflareApiBaseUrl = "https://genesisphere.kesllyalbuquerque.workers.dev";
 
 export const authReady = Boolean(
   firebaseConfig.enabled && firebaseConfig.apiKey && firebaseConfig.authDomain &&
