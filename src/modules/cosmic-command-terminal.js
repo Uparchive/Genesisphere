@@ -3,7 +3,11 @@ export function findNearestStarInRegion({engine,collisions,regionId,coordinates,
  if(!Number.isFinite(coordinates?.x)||!Number.isFinite(coordinates?.y))return{ok:false,reason:"invalid-coordinates"};
  const target={x:(coordinates.x-.5)*100,y:(coordinates.y-.5)*100};
  let nearest=null;
- for(const star of engine.world.byType("cosmic.star")){
+ const spatial=engine.world.spatial;
+ if(spatial?.nearest){
+  const match=spatial.nearest(target,{regionId,type:"cosmic.star",positionOf:star=>collisions.positionOf(star)});
+  if(match){const system=engine.world.get(match.entity.systemId);nearest={star:match.entity,system,position:match.position,distanceAU:match.distance}}
+ }else for(const star of engine.world.byType("cosmic.star")){
   const system=engine.world.get(star.systemId);
   if(!system||!(system.id===regionId||system.regionId===regionId))continue;
   const position=collisions.positionOf(star);
