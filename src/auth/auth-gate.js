@@ -8,7 +8,7 @@ if (!engine || !runtime) throw new Error("Genesisphere não terminou de iniciali
 function mount() {
   const style = document.createElement("style");
   style.textContent = `
-    .auth-screen{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:radial-gradient(ellipse at 50% 20%,#152843,#050811 62%,#010208);font-family:system-ui,sans-serif;color:#eaf3ff}
+    .auth-screen{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;background:radial-gradient(ellipse at 50% 20%,#152843,#050811 62%,#010208);font-family:system-ui,sans-serif;color:#eaf3ff}.auth-screen[hidden],.auth-account[hidden]{display:none}
     .auth-card{width:min(420px,100%);padding:30px;border:1px solid #8cc8ff3b;border-radius:20px;background:#07101ded;box-shadow:0 24px 90px #000a;backdrop-filter:blur(16px)}
     .auth-kicker{color:#7bd9ff;font-size:10px;font-weight:800;letter-spacing:3px}.auth-card h1{margin:9px 0 6px;font-size:24px}.auth-card p{color:#a9bad0;font-size:13px;line-height:1.5}
     .auth-form{display:grid;gap:11px;margin-top:22px}.auth-form label{display:grid;gap:6px;color:#cbd9eb;font-size:12px}.auth-form input{width:100%;height:43px;padding:0 12px;border:1px solid #ffffff26;border-radius:10px;background:#030913;color:#eff7ff;font:inherit;outline:none}.auth-form input:focus{border-color:#68c8ff}
