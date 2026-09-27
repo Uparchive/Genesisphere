@@ -55,7 +55,51 @@ test("WebGL proof maps the same snapshot star and orbiting planet without mutati
   assert.equal(bodies[0].textureId, "star.template");
   assert.equal(bodies[1].x, 2);
   assert.equal(bodies[1].textureId, "planet.template");
+  assert.deepEqual(bodies[1].lightDirection, [-1, 0, 0.22]);
   assert.equal(view.entities.length, 3);
+});
+
+test("WebGL universe scene projects Core coordinates and responds to entity snapshots", () => {
+  const source = [{ id: "system-a", type: "cosmic.star-system", position: { x: 0.5, y: 0.5 } },
+    { id: "system-b", type: "cosmic.star-system", position: { x: 300.5, y: 0.5 } }];
+  const first = createRenderViewModel({ entities: source, simulationTime: 0, scene: "universe", camera: { universe: { x: 0.5, y: 0.5 } } });
+  assert.deepEqual(bodiesFromSnapshot(first).map(body => body.id), ["system-a", "system-b"]);
+  assert.equal(bodiesFromSnapshot(first)[0].x, 0);
+  assert.equal(bodiesFromSnapshot(first)[1].x, 2160);
+  const next = createRenderViewModel({ entities: source.slice(0, 1), simulationTime: 1, scene: "universe", camera: { universe: { x: 0.5, y: 0.5 } } });
+  assert.deepEqual(bodiesFromSnapshot(next).map(body => body.id), ["system-a"]);
+  assert.equal(source.length, 2, "view projection does not take ownership of Core state");
+});
+
+test("WebGL region scene projects nested systems relative to the Spatial Core camera region", () => {
+  const view = createRenderViewModel({ entities: [
+    { id: "region", type: "cosmic.star-system", regionId: "region", position: { x: 10000, y: -3000 } },
+    { id: "nested", type: "cosmic.star-system", parentSystemId: "region", position: { x: 10000.001, y: -3000 } }
+  ], simulationTime: 0, scene: "system", camera: { viewSystemId: "region" }, viewport: { width: 390, height: 600 } });
+  const bodies = bodiesFromSnapshot(view);
+  assert.deepEqual(bodies.map(body => body.id), ["nested"]);
+  assert.ok(Math.abs(bodies[0].x - 0.132) < 1e-9);
+});
+
+test("WebGL hit testing returns EntityId and renderer restart retains the Core snapshot", () => {
+  const gl = {
+    VERTEX_SHADER: 1, FRAGMENT_SHADER: 2, COMPILE_STATUS: 3, LINK_STATUS: 4, ARRAY_BUFFER: 5, ELEMENT_ARRAY_BUFFER: 6, STATIC_DRAW: 7,
+    DEPTH_TEST: 8, CULL_FACE: 9, BLEND: 10, ONE: 11, ONE_MINUS_SRC_ALPHA: 12, FLOAT: 13,
+    createShader: () => ({}), shaderSource() {}, compileShader() {}, getShaderParameter: () => true, getShaderInfoLog: () => "", deleteShader() {},
+    createProgram: () => ({}), attachShader() {}, linkProgram() {}, getProgramParameter: () => true, getProgramInfoLog: () => "", deleteProgram() {},
+    createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, deleteBuffer() {}, getAttribLocation: () => 0, getUniformLocation: () => ({}), enable() {}, blendFunc() {}
+  };
+  const canvas = { clientWidth: 800, clientHeight: 600, getContext: () => gl };
+  const entity = { id: "core-star-id", type: "cosmic.star", systemId: "system", positionAU: { x: 0, y: 0 } };
+  const snapshot = createRenderViewModel({ entities: [entity], simulationTime: 0, scene: "system", camera: { viewSystemId: "system" }, viewport: { width: 800, height: 600 } });
+  const renderer = new WebGL3DRenderer();
+  renderer.init(canvas).update(snapshot);
+  assert.equal(renderer.pick(400, 300), "core-star-id");
+  renderer.dispose();
+  assert.equal(snapshot.entities[0].id, "core-star-id");
+  renderer.init(canvas).update(snapshot);
+  assert.equal(renderer.pick(400, 300), "core-star-id");
+  renderer.dispose();
 });
 
 test("WebGL renderer draws snapshot bodies, reports frame metrics, and disposes", () => {
