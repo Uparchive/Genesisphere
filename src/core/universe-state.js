@@ -1,11 +1,13 @@
 import { WorldStore } from "./world-store.js";
 import { TimeEngine } from "./time-engine.js";
+import { SimulationLOD } from "./simulation-lod.js";
 
 /** Canonical, presentation-independent state for one running universe. */
 export class UniverseState {
   constructor({ world = new WorldStore(), simulationTime = 0, timeScale = 1, paused = false, realTime = 0 } = {}) {
     this.world = world;
     this.time = new TimeEngine({ simulationTime, timeScale, paused, realTime });
+    this.simulationLOD = new SimulationLOD(world);
   }
 
   get realTime() { return this.time.realTime; }
