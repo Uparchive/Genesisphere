@@ -45,41 +45,79 @@ import { WebGL3DRenderer, bodiesFromSnapshot } from "../src/rendering/webgl3d-re
 
 test("WebGL proof maps the same snapshot star and orbiting planet without mutating it", () => {
   const view = createRenderViewModel({ entities: [
-    { id: "star", type: "cosmic.star", systemId: "system", positionAU: { x: 1, y: 0 } },
-    { id: "planet", type: "cosmic.terrestrial-planet", systemId: "system", parentStarId: "star", orbit: { semiMajorAxisAU: 1, periodDays: 365.25, phaseRadians: 0 }, radiusEarth: 1 },
+    { id: "star", type: "cosmic.star", systemId: "system", templateId: "star.template", positionAU: { x: 1, y: 0 } },
+    { id: "planet", type: "cosmic.terrestrial-planet", systemId: "system", parentStarId: "star", templateId: "planet.template", orbit: { semiMajorAxisAU: 1, periodDays: 365.25, phaseRadians: 0 }, radiusEarth: 1 },
     { id: "outside", type: "cosmic.star", systemId: "other", positionAU: { x: 50, y: 50 } }
   ], simulationTime: 0, camera: { viewSystemId: "system" } });
   const bodies = bodiesFromSnapshot(view);
   assert.deepEqual(bodies.map(body => body.id), ["star", "planet"]);
   assert.equal(bodies[0].x, 1);
+  assert.equal(bodies[0].textureId, "star.template");
   assert.equal(bodies[1].x, 2);
+  assert.equal(bodies[1].textureId, "planet.template");
   assert.equal(view.entities.length, 3);
 });
 
 test("WebGL renderer draws snapshot bodies, reports frame metrics, and disposes", () => {
-  let metric = null, clock = 0, draws = 0;
+  let metric = null, clock = 0, draws = 0, firstMvp = null;
   const gl = {
     VERTEX_SHADER: 1, FRAGMENT_SHADER: 2, COMPILE_STATUS: 3, LINK_STATUS: 4, ARRAY_BUFFER: 5, ELEMENT_ARRAY_BUFFER: 6,
     STATIC_DRAW: 7, DEPTH_TEST: 8, CULL_FACE: 9, FLOAT: 10, TRIANGLES: 11, UNSIGNED_SHORT: 12, COLOR_BUFFER_BIT: 1, DEPTH_BUFFER_BIT: 2,
+    BLEND: 13, SRC_ALPHA: 14, ONE: 15, ONE_MINUS_SRC_ALPHA: 16, TEXTURE0: 17, TEXTURE_2D: 18, TEXTURE_WRAP_S: 19, TEXTURE_WRAP_T: 20,
+    CLAMP_TO_EDGE: 20, TEXTURE_MIN_FILTER: 21, TEXTURE_MAG_FILTER: 22, LINEAR: 23, UNPACK_PREMULTIPLY_ALPHA_WEBGL: 24, RGBA: 25,
     createShader: () => ({}), shaderSource() {}, compileShader() {}, getShaderParameter: () => true, getShaderInfoLog: () => "", deleteShader() {},
     createProgram: () => ({}), attachShader() {}, linkProgram() {}, getProgramParameter: () => true, getProgramInfoLog: () => "", deleteProgram() {},
-    createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, deleteBuffer() {}, getAttribLocation: () => 0, getUniformLocation: () => ({}),
-    enable() {}, viewport() {}, clearColor() {}, clear() {}, useProgram() {}, enableVertexAttribArray() {}, vertexAttribPointer() {},
-    uniformMatrix4fv() {}, uniform3fv() {}, uniform1f() {}, drawElements() { draws++; }
+    createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, deleteBuffer() {}, getAttribLocation: () => 0, getUniformLocation: (_program, name) => name,
+    enable() {}, blendFunc() {}, viewport() {}, clearColor() {}, clear() {}, useProgram() {}, enableVertexAttribArray() {}, vertexAttribPointer() {},
+    uniformMatrix4fv(location, _transpose, value) { if (location === "uMvp" && !firstMvp) firstMvp = value; }, uniform3fv() {}, uniform1f() {}, uniform1i() {},
+    activeTexture() {}, bindTexture() {}, pixelStorei() {}, texParameteri() {}, texImage2D() {}, createTexture: () => ({}), deleteTexture() {},
+    drawElements() { draws++; }
   };
   const canvas = { clientWidth: 1366, clientHeight: 768, getContext: kind => kind === "webgl" ? gl : null };
   const renderer = new WebGL3DRenderer({ now: () => (clock += 1), onMetrics: value => { metric = value; } });
-  const view = createRenderViewModel({ entities: [{ id: "s", type: "cosmic.star", systemId: "system", positionAU: { x: 0, y: 0 } }], simulationTime: 0, camera: { viewSystemId: "system" }, viewport: { width: 320, height: 240 } });
+  const view = createRenderViewModel({ entities: [{ id: "s", type: "cosmic.star", systemId: "system", positionAU: { x: 0, y: 0 } }], simulationTime: 0, camera: { viewSystemId: "system", pan: { x: 100, y: 80 } }, viewport: { width: 320, height: 240 } });
   renderer.init(canvas).update(view);
   for (let index = 0; index < 60; index++) renderer.render();
   assert.equal(draws, 60);
   assert.equal(metric.width, 1366);
   assert.equal(metric.height, 768);
   assert.equal(metric.bodies, 1);
+  assert.ok(firstMvp[12] > 0, "rightward pan moves the camera with legacy screen-space direction");
+  assert.ok(firstMvp[13] < 0, "downward pan moves the camera with legacy screen-space direction");
   canvas.clientWidth = 390; canvas.clientHeight = 844;
   for (let index = 0; index < 30; index++) renderer.render();
   assert.equal(metric.width, 390);
   assert.equal(metric.height, 844);
   renderer.dispose();
   assert.throws(() => renderer.render(), /init and update/);
+});
+
+test("WebGL renderer loads catalog artwork into sphere textures", () => {
+  const images = [], uploaded = [], deleted = [];
+  class MockImage { set src(value) { this.url = value; images.push(this); } }
+  let textureUniform = 0;
+  const gl = {
+    VERTEX_SHADER: 1, FRAGMENT_SHADER: 2, COMPILE_STATUS: 3, LINK_STATUS: 4, ARRAY_BUFFER: 5, ELEMENT_ARRAY_BUFFER: 6,
+    STATIC_DRAW: 7, DEPTH_TEST: 8, CULL_FACE: 9, BLEND: 10, SRC_ALPHA: 11, ONE: 12, ONE_MINUS_SRC_ALPHA: 13, FLOAT: 14, TRIANGLES: 15, UNSIGNED_SHORT: 16,
+    COLOR_BUFFER_BIT: 1, DEPTH_BUFFER_BIT: 2, TEXTURE0: 16, TEXTURE_2D: 17, TEXTURE_WRAP_S: 18, TEXTURE_WRAP_T: 19, CLAMP_TO_EDGE: 20,
+    TEXTURE_MIN_FILTER: 21, TEXTURE_MAG_FILTER: 22, LINEAR: 23, UNPACK_PREMULTIPLY_ALPHA_WEBGL: 24, RGBA: 25,
+    createShader: () => ({}), shaderSource() {}, compileShader() {}, getShaderParameter: () => true, getShaderInfoLog: () => "", deleteShader() {},
+    createProgram: () => ({}), attachShader() {}, linkProgram() {}, getProgramParameter: () => true, getProgramInfoLog: () => "", deleteProgram() {},
+    createBuffer: () => ({}), bindBuffer() {}, bufferData() {}, deleteBuffer() {}, getAttribLocation: () => 0, getUniformLocation: (_program, name) => name,
+    enable() {}, blendFunc() {}, viewport() {}, clearColor() {}, clear() {}, useProgram() {}, enableVertexAttribArray() {}, vertexAttribPointer() {},
+    uniformMatrix4fv() {}, uniform3fv() {}, uniform1f(location, value) { if (location === "uHasTexture") textureUniform = value; }, uniform1i() {}, activeTexture() {}, pixelStorei() {}, texParameteri() {},
+    createTexture: () => ({}), bindTexture() {}, texImage2D(...args) { uploaded.push(args); }, deleteTexture(texture) { deleted.push(texture); }, drawElements() {}
+  };
+  const renderer = new WebGL3DRenderer({ assets: [{ id: "planet.template", asset: "assets/celestial/planets/gas-giant/preview.webp" }], ImageClass: MockImage });
+  const canvas = { clientWidth: 800, clientHeight: 600, getContext: () => gl };
+  const view = createRenderViewModel({ entities: [{ id: "p", type: "cosmic.terrestrial-planet", systemId: "system", templateId: "planet.template", parentStarId: "s", orbit: { semiMajorAxisAU: 1 } }], simulationTime: 0, camera: { viewSystemId: "system" }, viewport: { width: 800, height: 600 } });
+  renderer.init(canvas).update(view);
+  assert.equal(images.length, 1);
+  assert.equal(images[0].url, "assets/celestial/planets/gas-giant/master.webp");
+  images[0].onload();
+  renderer.render();
+  assert.equal(uploaded.length, 1);
+  assert.equal(textureUniform, 1);
+  renderer.dispose();
+  assert.equal(deleted.length, 1);
 });
