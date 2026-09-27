@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { asteroidPositionAt, createOrbitalCollisionSystem, GRAVITATIONAL_CONSTANT_AU } from "../src/systems/stellar/orbital-collisions.js";
+import { asteroidPositionAt, createOrbitalCollisionSystem, createPhysicsEngine, GRAVITATIONAL_CONSTANT_AU } from "../src/systems/physics/physics-engine.js";
 import { effectiveStellarState } from "../src/systems/stellar/stellar-state.js";
 
 function createEngine(seed) {
@@ -402,4 +402,35 @@ test("distant bodies outside the interaction radius do not add all-pairs gravity
   isolatedPhysics.update(16);
   distantPhysics.update(16);
   assert.deepEqual(distantPhysics.velocityOf("local-planet"), isolatedPhysics.velocityOf("local-planet"));
+});
+
+
+test("the extracted Physics Engine runs headless and reads Entity Model transform components", () => {
+  const modelStar = Object.freeze({
+    ...star("component-star", { positionAU: { x: 50, y: 0 } }),
+    components: {
+      identity: { id: "component-star", type: "cosmic.star", schemaVersion: 1, createdAt: 0 },
+      transform: { position: null, positionAU: { x: 0, y: 0 }, velocityAUPerSecond: { x: 0, y: 0 }, coordinateSystem: "AU" },
+      physical: { massSolar: 1 },
+      relations: { parentIds: [], parentId: null, systemId: "system-1", universeId: null, regionId: null }
+    }
+  });
+  const engine = createEngine([modelStar]);
+  const physics = createPhysicsEngine(engine);
+  physics.update(0);
+  assert.deepEqual(physics.positionOf("component-star"), { x: 0, y: 0 });
+  physics.update(16);
+  assert.deepEqual(physics.positionOf("component-star"), { x: 0, y: 0 });
+  assert.equal(typeof globalThis.document, "undefined");
+});
+
+test("physics integration produces the same result for an equal total interval", () => {
+  const seed = [star("star-1"), planet("planet-1", 1, { phaseRadians: 0 })];
+  const single = createOrbitalCollisionSystem(createEngine(seed));
+  const partitioned = createOrbitalCollisionSystem(createEngine(seed));
+  single.update(0); partitioned.update(0);
+  single.update(1_000);
+  for (const time of [125, 250, 375, 500, 625, 750, 875, 1_000]) partitioned.update(time);
+  const a = single.positionOf("planet-1"), b = partitioned.positionOf("planet-1");
+  assert.ok(Math.hypot(a.x - b.x, a.y - b.y) < 1e-10);
 });

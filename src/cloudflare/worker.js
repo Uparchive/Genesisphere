@@ -1,6 +1,6 @@
 import { createGenesisEngine } from "../game-engine.js";
 import { SIMULATION_MS_PER_REAL_MS, TimeEngine } from "../core/time-engine.js";
-import { createGravitySystem } from "../systems/stellar/orbital-collisions.js";
+import { createGravitySystem } from "../systems/physics/physics-engine.js";
 
 const JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const ALARM_MS = 60_000;
