@@ -14,7 +14,7 @@ function mount() {
     .auth-shell{position:relative;display:grid;place-items:center;min-height:100vh;padding:78px 38px 46px;background:radial-gradient(ellipse at 45% 40%,#16212a55,transparent 68%),#03070de8}
     .auth-card{width:min(100%,548px);padding:38px 42px 34px;border:1px solid #c8d1d532;border-radius:22px;background:linear-gradient(145deg,#101a20ed,#060c12f2 72%);box-shadow:0 30px 100px #0009,inset 0 1px #ffffff08;backdrop-filter:blur(18px)}
     .auth-logo{display:block;width:min(235px,72%);height:auto;max-height:146px;margin:0 auto 3px;object-fit:contain}.auth-kicker{display:block;margin:0 auto 34px;text-align:center;color:#c3c9cbad;font-size:9px;font-weight:500;line-height:1.9;letter-spacing:3.4px;text-transform:uppercase}.auth-card h1{margin:0 0 7px;text-align:center;font-size:25px;font-weight:500;letter-spacing:.3px}.auth-card p{margin:0;text-align:center;color:#b3b7b7;font-size:13px;line-height:1.55}
-    .auth-form{display:grid;gap:15px;margin-top:32px}.auth-field{position:relative;display:flex;align-items:center;min-height:56px;border:1px solid #d5dce133;border-radius:13px;background:#0a1219a8;transition:border-color .18s,box-shadow .18s}.auth-field:focus-within{border-color:#c9d4dc8a;box-shadow:0 0 0 3px #c9d4dc0c}.auth-field-icon{flex:0 0 20px;width:20px;height:20px;margin-left:18px;color:#dedbd2}.auth-field input{width:100%;min-width:0;height:54px;padding:0 14px;border:0;background:transparent;color:#f5f2ec;font:14px inherit;outline:0}.auth-field input::placeholder{color:#b0b8b9a8}.auth-password-toggle{flex:0 0 42px;width:42px;height:42px;margin-right:5px;border:0;border-radius:9px;background:transparent;color:#9da8ac;cursor:pointer}
+    .auth-form{display:grid;gap:15px;margin-top:32px}.auth-field{position:relative;display:flex;align-items:center;min-height:56px;border:1px solid #d5dce133;border-radius:13px;background:#0a1219a8;transition:border-color .18s,box-shadow .18s}.auth-field:focus-within{border-color:#c9d4dc8a;box-shadow:0 0 0 3px #c9d4dc0c}.auth-field-icon{flex:0 0 20px;width:20px;height:20px;margin-left:18px;color:#dedbd2}.auth-field input{width:100%;min-width:0;height:54px;padding:0 14px;border:0;background:transparent;color:#f5f2ec;font:inherit;font-size:14px;outline:0}.auth-field input::placeholder{color:#b0b8b9a8}.auth-password-toggle{flex:0 0 42px;width:42px;height:42px;margin-right:5px;border:0;border-radius:9px;background:transparent;color:#9da8ac;cursor:pointer}
     .auth-options{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:1px 0 4px;color:#ddd;font-size:11px}.auth-options[hidden]{display:none}.auth-remember{display:flex;align-items:center;gap:8px;cursor:pointer}.auth-remember input{width:17px;height:17px;accent-color:#e9dbc4}.auth-link{padding:0;border:0;background:none;color:#d9c6a8;font:inherit;cursor:pointer;text-decoration:none}.auth-link:hover{color:#fff1d7;text-decoration:underline}
     .auth-button{min-height:48px;border:1px solid #ffffff25;border-radius:12px;background:#101921;color:#f1eee8;padding:11px 14px;font:600 13px system-ui,sans-serif;cursor:pointer;transition:filter .16s,transform .16s}.auth-button:hover{filter:brightness(1.12)}.auth-button:active{transform:translateY(1px)}.auth-button.primary{min-height:52px;border-color:#f6ead0;background:linear-gradient(105deg,#fbf0dc,#d7c7b0);border-radius:999px;color:#141517;font-size:14px}.auth-button:disabled{opacity:.55;cursor:wait}
     .auth-separator{display:flex;align-items:center;gap:18px;margin:17px 0 8px;color:#aeb3b3;font-size:12px}.auth-separator:before,.auth-separator:after{content:"";height:1px;flex:1;background:#ffffff20}.auth-google{display:flex;justify-content:center;align-items:center;gap:11px;width:100%;min-height:48px;border:1px solid #d4dce02e;border-radius:12px;background:#ffffff05;color:#e7e8e4;font-size:13px}.auth-google svg{width:20px;height:20px}
@@ -198,7 +198,7 @@ async function start() {
     return;
   }
   form.addEventListener("submit", async event => {
-    event.preventDefault(); error.textContent = ""; setBusy(true);
+    event.preventDefault(); error.classList.remove("is-success"); error.textContent = ""; setBusy(true);
     try {
       await globalAuth.setRememberMe(remember.checked);
       if (creating) await globalAuth.register(email.value.trim(), password.value);
@@ -231,7 +231,7 @@ async function start() {
     } catch (reason) { error.textContent = messageFor(reason); }
     finally { forgot.disabled = false; }
   });
-  switchButton.addEventListener("click", () => { creating = !creating; error.textContent = ""; mode(); });
+  switchButton.addEventListener("click", () => { creating = !creating; error.classList.remove("is-success"); error.textContent = ""; mode(); });
   document.querySelector("#authLogout").addEventListener("click", async () => {
     if (activeUserId) await saveNow();
     await globalAuth.logout();
