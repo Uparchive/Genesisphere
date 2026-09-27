@@ -1,24 +1,24 @@
 import { WorldStore } from "./world-store.js";
+import { TimeEngine } from "./time-engine.js";
 
 /** Canonical, presentation-independent state for one running universe. */
 export class UniverseState {
-  constructor({ world = new WorldStore(), simulationTime = 0, timeScale = 1, paused = false } = {}) {
+  constructor({ world = new WorldStore(), simulationTime = 0, timeScale = 1, paused = false, realTime = 0 } = {}) {
     this.world = world;
-    this.setSimulationTime(simulationTime);
-    this.setTimeScale(timeScale);
-    this.paused = Boolean(paused);
+    this.time = new TimeEngine({ simulationTime, timeScale, paused, realTime });
   }
 
+  get realTime() { return this.time.realTime; }
+  get simulationTime() { return this.time.simulationTime; }
+  get timeScale() { return this.time.timeScale; }
+  get paused() { return this.time.paused; }
+  set paused(value) { this.time.setPaused(value); }
   setSimulationTime(value) {
-    if (!Number.isFinite(value) || value < 0) throw new Error("Simulation time must be a non-negative finite number");
-    this.simulationTime = value;
-    return value;
+    return this.time.setSimulationTime(value);
   }
 
   setTimeScale(value) {
-    if (!Number.isFinite(value) || value <= 0) throw new Error("Time scale must be a positive finite number");
-    this.timeScale = value;
-    return value;
+    return this.time.setTimeScale(value);
   }
 }
 
@@ -29,11 +29,13 @@ export function createLegacyUniverseAdapter(state, dispatch = null) {
     world: state.world,
     get simulationTime() { return state.simulationTime; },
     set simulationTime(value) { if (dispatch) dispatch({ type: "SetSimulationTime", value }); else state.setSimulationTime(value); },
+    get realTime() { return state.realTime; },
     get timeScale() { return state.timeScale; },
     set timeScale(value) { if (dispatch) dispatch({ type: "SetTimeScale", value }); else state.setTimeScale(value); },
     get paused() { return state.paused; },
     set paused(value) { if (dispatch) dispatch({ type: "SetPaused", value }); else state.paused = Boolean(value); },
     getSimulationTime: () => state.simulationTime,
+    getRealTime: () => state.realTime,
     setSimulationTime: value => dispatch ? dispatch({ type: "SetSimulationTime", value }) : state.setSimulationTime(value),
     getPaused: () => state.paused,
     setPaused: value => dispatch ? dispatch({ type: "SetPaused", value }) : (state.paused = Boolean(value)),

@@ -38,6 +38,20 @@ export class CommandBus {
       }
       return currentTime;
     });
+    this.register("AdvanceRealTime", command => {
+      if (!Number.isFinite(command.deltaMs) || command.deltaMs < 0) throw new DomainError("INVALID_TIME_DELTA", "Real time delta must be a non-negative finite number", { deltaMs: command.deltaMs });
+      const advancement = this.engine.state.time.advance(command.deltaMs);
+      if (advancement.simulationDeltaMs > 0) {
+        this.engine.bus.emit(DomainEvent.TimeAdvanced, Object.freeze({
+          previousTime: advancement.previousSimulationTime,
+          currentTime: advancement.simulationTime,
+          deltaMs: advancement.simulationDeltaMs,
+          realTime: advancement.realTime,
+          realDeltaMs: advancement.realDeltaMs
+        }));
+      }
+      return advancement;
+    });
   }
 
   register(type, handler, { transactional = false } = {}) {

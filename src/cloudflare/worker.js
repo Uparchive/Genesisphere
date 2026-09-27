@@ -1,4 +1,5 @@
 import { createGenesisEngine } from "../game-engine.js";
+import { SIMULATION_MS_PER_REAL_MS, TimeEngine } from "../core/time-engine.js";
 import { createGravitySystem } from "../systems/stellar/orbital-collisions.js";
 
 const JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
@@ -135,7 +136,10 @@ export class UniverseDO {
     const elapsed = Math.max(0, now - row.processed_wall_ms);
     if (!elapsed) { await this.ctx.storage.setAlarm(now + ALARM_MS); return; }
     const snapshot = JSON.parse(row.snapshot);
-    const rate = snapshot.paused ? 0 : Math.max(.1, Math.min(1, Number(snapshot.timeScale) || 1));
+    const timeScale = Number.isFinite(snapshot.timeScale) && snapshot.timeScale > 0
+      ? Math.max(.1, Math.min(64, snapshot.timeScale))
+      : 1;
+    const rate = snapshot.paused ? 0 : SIMULATION_MS_PER_REAL_MS * timeScale;
     if (rate === 0) {
       this.sql.exec("UPDATE universe_state SET processed_wall_ms = ? WHERE id = 1", now);
       await this.ctx.storage.setAlarm(now + ALARM_MS);
@@ -146,10 +150,16 @@ export class UniverseDO {
     engine.world.restore(snapshot.world);
     const gravity = createGravitySystem(engine, undefined, { maxStepsPerUpdate: 4096 });
     gravity.restore(snapshot.gravity);
-    const simulationTime = Number(row.simulation_time) + processed;
+    const clock = new TimeEngine({
+      simulationTime: Number(row.simulation_time),
+      realTime: Number(row.processed_wall_ms),
+      timeScale
+    });
+    const advancement = clock.advance(processed);
+    const simulationTime = advancement.simulationTime;
     gravity.update(simulationTime);
     const next = { ...snapshot, simulationTime, world: engine.world.snapshot(), gravity: gravity.snapshot() };
-    const processedWall = Number(row.processed_wall_ms) + processed;
+    const processedWall = advancement.realTime;
     this.sql.exec("UPDATE universe_state SET snapshot = ?, simulation_time = ?, processed_wall_ms = ? WHERE id = 1", JSON.stringify(next), simulationTime, processedWall);
     const behind = now - processedWall;
     await this.ctx.storage.setAlarm(behind > 0 ? now + 1_000 : now + ALARM_MS);
