@@ -74,6 +74,14 @@ O código atual já oferece `GenesisEngine`, `WorldStore`, `EventBus` e módulos
 
 Esses adapters orientam as extrações incrementais. `UniverseState` reúne `WorldStore` e o `TimeEngine` canônico, que mantém `realTime`, `simulationTime`, `timeScale` e `paused`. A interface solicita avanço por comandos com um intervalo real explícito; o renderer não calcula o delta simulado. Em 1×, um dia real equivale a 1.000 anos simulados, mantendo os milissegundos simulados usados pelo integrador. `GenesisEngine` mantém `engine.world` e o adapter legado para compatibilidade. O formato persistido (`world` versão 1 e campos temporais existentes) permanece inalterado; o checkpoint do integrador gravitacional segue no sistema de física e é lido e gravado pelo adapter de autenticação existente.
 
+### Coordenadas espaciais atuais
+
+`position` de entidades `cosmic.star-system` e `cosmic.empty-space` usa **Universe Units (UU)**: coordenadas cartesianas lógicas, inicialmente centradas em `(0.5, 0.5)`, sem equivalência física assumida com metros ou anos-luz. Uma UU é uma unidade do mapa atual; por exemplo, as células de geração procedural medem `0.45 UU`. `positionAU`, órbitas e física local de sistemas continuam em unidades astronômicas (AU), sem conversão implícita entre AU e UU. O schema persistido V1 continua com os mesmos campos numéricos.
+
+`SpatialCoordinateSystem` é uma API pura do Core para validar coordenadas, aplicar deltas lógicos e obter deltas relativos à câmera. O renderer mantém a projeção mundo↔tela no adaptador `infinite-space.js`, e fornece as dimensões do viewport e zoom somente ali. Os deltas de renderização usam células de origem de `1024 UU` antes da projeção, evitando multiplicar coordenadas absolutas grandes por escala de tela. Câmera, zoom e a preferência de exibir as coordenadas continuam sendo estado transitório da apresentação; teleporte e leitura do cursor operam nos mesmos UU canônicos, sem alterar entidades ou depender do zoom.
+
+O schema legado guarda cada eixo como `Number` IEEE-754: há cerca de 15–16 algarismos decimais significativos, com espaçamento entre valores representáveis de aproximadamente `1.2e-7 UU` em `1e9 UU` e `1.2e-4 UU` em `1e12 UU`. O rebase reduz erro de projeção ao subtrair posições próximas antes de escalar; ele não aumenta a precisão já armazenada no snapshot. Não se define conversão física entre UU e AU nesta migração. Coordenadas além dessa faixa continuam finitas, mas a resolução absoluta decresce conforme o limite de precisão do formato numérico existente.
+
 ## 5. Critérios de conformidade para extrações futuras
 
 Uma mudança respeita este contrato quando:

@@ -1,22 +1,24 @@
 // Deterministic, viewport-independent coordinates and procedural starfield.
+import { spatialCoordinates } from "../core/spatial-coordinate-system.js";
 const STAR_CELL_SIZE=1/32;
 
 export function worldAtScreen(point,{x:centerX,y:centerY},width,height,zoom){
   const scale=Math.max(Number.EPSILON,zoom);
-  return{x:centerX+(point.x-width/2)/(width*scale),y:centerY+(point.y-height/2)/(height*scale)};
+  return spatialCoordinates.addDelta({x:centerX,y:centerY},{x:(point.x-width/2)/(width*scale),y:(point.y-height/2)/(height*scale)});
 }
 
 export function screenAtWorld(point,{x:centerX,y:centerY},width,height,zoom){
-  return{x:width/2+(point.x-centerX)*width*zoom,y:height/2+(point.y-centerY)*height*zoom};
+  const delta=spatialCoordinates.worldDelta(point,{x:centerX,y:centerY});
+  return{x:width/2+delta.x*width*zoom,y:height/2+delta.y*height*zoom};
 }
 
 export function panWorldCenter(center,delta,width,height,zoom){
-  return{x:center.x-delta.x/(width*zoom),y:center.y-delta.y/(height*zoom)};
+  return spatialCoordinates.addDelta(center,{x:-delta.x/(width*zoom),y:-delta.y/(height*zoom)});
 }
 
 export function zoomWorldCenterAtScreen(center,point,width,height,oldZoom,newZoom){
   const anchor=worldAtScreen(point,center,width,height,oldZoom);
-  return{x:anchor.x-(point.x-width/2)/(width*newZoom),y:anchor.y-(point.y-height/2)/(height*newZoom)};
+  return spatialCoordinates.addDelta(anchor,{x:-(point.x-width/2)/(width*newZoom),y:-(point.y-height/2)/(height*newZoom)});
 }
 
 function random(seed){
@@ -45,7 +47,8 @@ export function starsForView(center,width,height,zoom){
     for(let index=0;index<count;index++){
       const worldX=(cellX+roll())*STAR_CELL_SIZE;
       const worldY=(cellY+roll())*STAR_CELL_SIZE;
-      stars.push({x:width/2+(worldX-center.x)*width*zoom,y:height/2+(worldY-center.y)*height*zoom,r:.3+roll()*.85,a:.15+roll()*.7});
+      const delta=spatialCoordinates.worldDelta({x:worldX,y:worldY},center);
+      stars.push({x:width/2+delta.x*width*zoom,y:height/2+delta.y*height*zoom,r:.3+roll()*.85,a:.15+roll()*.7});
     }
   }
   return stars;
