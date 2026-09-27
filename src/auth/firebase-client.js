@@ -18,6 +18,8 @@ export async function createFirebaseAuth() {
     onChange: callback => authSdk.onAuthStateChanged(auth, callback),
     register: (email, password) => authSdk.createUserWithEmailAndPassword(auth, email, password),
     login: (email, password) => authSdk.signInWithEmailAndPassword(auth, email, password),
+    resetPassword: email => authSdk.sendPasswordResetEmail(auth, email),
+    setRememberMe: remember => authSdk.setPersistence(auth, remember ? authSdk.browserLocalPersistence : authSdk.browserSessionPersistence),
     googleLogin: () => authSdk.signInWithPopup(auth, google),
     logout: () => authSdk.signOut(auth)
   };
