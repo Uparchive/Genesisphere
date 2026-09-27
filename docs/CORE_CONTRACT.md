@@ -72,7 +72,7 @@ O código atual já oferece `GenesisEngine`, `WorldStore`, `EventBus` e módulos
 5. **Migração explícita de schema:** toda mudança de snapshot tem versão, transformação de entrada para o novo modelo e teste de ida/volta ou equivalência. Saves de Genesis-1/Astra-1 e atlas são preservados; nenhum adapter pode descartar campos desconhecidos silenciosamente ou substituir o universo por um novo seed.
 6. **Substituição gradual:** comparar resultados do caminho legado com o novo em testes de regressão; trocar uma fronteira por vez e remover um adapter só depois de todos os consumidores e saves relevantes usarem o contrato novo.
 
-Esses adapters são estratégia para as próximas extrações. Esta missão cria somente o contrato e não altera código, snapshots, fluxo de login ou comportamento de jogo.
+Esses adapters orientam as extrações incrementais. A extração inicial em `src/core/universe-state.js` agora reúne o `WorldStore` e o estado temporal canônico (`simulationTime`, `timeScale` e `paused`) sob `UniverseState`. `GenesisEngine` mantém `engine.world` como compatibilidade, enquanto a interface acessa o estado temporal pelo adapter legado. O formato persistido atual (`world` versão 1 e campos temporais existentes) permanece inalterado; o checkpoint do integrador gravitacional segue no sistema de física e é lido e gravado pelo adapter de autenticação existente.
 
 ## 5. Critérios de conformidade para extrações futuras
 
