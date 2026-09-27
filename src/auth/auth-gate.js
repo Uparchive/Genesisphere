@@ -20,7 +20,7 @@ function mount() {
     .auth-separator{display:flex;align-items:center;gap:18px;margin:17px 0 8px;color:#aeb3b3;font-size:12px}.auth-separator:before,.auth-separator:after{content:"";height:1px;flex:1;background:#ffffff20}.auth-google{display:flex;justify-content:center;align-items:center;gap:11px;width:100%;min-height:48px;border:1px solid #d4dce02e;border-radius:12px;background:#ffffff05;color:#e7e8e4;font-size:13px}.auth-google svg{width:20px;height:20px}
     .auth-switch{margin-top:26px;text-align:center;color:#aeb5b5;font-size:12px}.auth-switch .auth-link{margin-left:10px;font-size:13px;font-weight:600}
     .auth-error{min-height:18px;margin-top:11px;color:#ffad9b;font-size:12px;text-align:center}.auth-error.is-success{color:#a8e4c1}
-    .auth-account{position:fixed;z-index:20;right:16px;top:68px;display:flex;gap:8px;align-items:center;padding:7px 10px;border:1px solid #ffffff24;border-radius:10px;background:#050a12dd;color:#cbd9eb;font:11px system-ui,sans-serif}.auth-account button{border:0;background:none;color:#e6d1ae;font:inherit;cursor:pointer}
+    .auth-account{position:relative;z-index:14;display:flex;align-items:center}.auth-account[hidden]{display:none!important}.auth-account-toggle{display:grid;place-items:center;width:38px;height:40px;border:1px solid #ffffff24;border-radius:10px;background:#0b1728;color:#bdeaff;cursor:pointer}.auth-account-toggle svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.auth-account-menu[hidden]{display:none}.auth-account-menu{position:absolute;z-index:16;left:0;bottom:calc(100% + 10px);width:205px;padding:9px;border:1px solid #75c9ff70;border-radius:13px;background:#07101df5;box-shadow:0 14px 42px #000a;backdrop-filter:blur(14px)}.auth-account-menu span{display:block;overflow:hidden;padding:7px 8px 10px;color:#9fb4d1;font-size:11px;text-overflow:ellipsis;white-space:nowrap;border-bottom:1px solid #ffffff18}.auth-account-menu button{width:100%;margin-top:7px;padding:9px;border:1px solid #ffffff1b;border-radius:8px;background:#251716;color:#ffd9cf;text-align:left;font:700 11px system-ui,sans-serif;cursor:pointer}.auth-account-menu button:hover{background:#46201b}
     @media(max-width:1000px){.auth-screen{grid-template-columns:minmax(0,1fr) minmax(420px,.95fr)}.auth-visual-brand{left:3%;width:min(430px,45vw)}.auth-card{padding:32px 30px}.auth-topline{right:5%;font-size:9px;letter-spacing:2px}}
     @media(max-width:760px){.auth-screen{display:block;overflow:auto;background:#03070d url("assets/brand/genesisphere-login-scene.webp") 38% center/cover no-repeat}.auth-visual{position:absolute;inset:0;min-height:100%;background:transparent}.auth-visual-brand,.auth-visual-footer{display:none}.auth-visual:after{background:linear-gradient(90deg,#02070d33,#02070da8),linear-gradient(0deg,#02070df2 0%,#02070d38 58%,#02070d45)}.auth-topline{display:none}.auth-shell{position:relative;min-height:100svh;padding:22px 15px;background:transparent}.auth-card{width:min(100%,490px);padding:29px 24px 25px;border-radius:19px;background:#071019dc;backdrop-filter:blur(18px)}.auth-logo{width:min(205px,68%);max-height:128px}.auth-kicker{margin-bottom:24px;font-size:8px;letter-spacing:2.8px}.auth-card h1{font-size:22px}.auth-form{gap:12px;margin-top:25px}.auth-account{top:auto;bottom:calc(12px + env(safe-area-inset-bottom));right:10px}}
     @media(max-width:380px){.auth-card{padding:25px 18px 22px}.auth-options{font-size:10px}.auth-field{min-height:52px}.auth-field input{height:50px}}
@@ -37,8 +37,8 @@ function mount() {
   const account = document.createElement("div");
   account.className = "auth-account";
   account.hidden = true;
-  account.innerHTML = `<span id="authUserLabel"></span><button type="button" id="authLogout">Sair</button>`;
-  document.body.append(account);
+  account.innerHTML = `<button id="authAccountToggle" class="auth-account-toggle" type="button" aria-label="Abrir menu da conta" aria-expanded="false" title="Conta"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20c.7-4 3.3-6 7.5-6s6.8 2 7.5 6"/></svg></button><div id="authAccountMenu" class="auth-account-menu" role="menu" hidden><span id="authUserLabel"></span><button type="button" id="authLogout" role="menuitem">Sair da conta</button></div>`;
+  (document.querySelector("#accountAnchor") || document.body).append(account);
   return { screen, account };
 }
 
@@ -94,6 +94,11 @@ async function start() {
     return;
   }
   const { screen, account } = mount();
+  const accountToggle = document.querySelector("#authAccountToggle");
+  const accountMenu = document.querySelector("#authAccountMenu");
+  accountToggle.addEventListener("click", () => { const open = accountMenu.hidden; accountMenu.hidden = !open; accountToggle.setAttribute("aria-expanded", String(open)); });
+  document.addEventListener("pointerdown", event => { if (!account.contains(event.target)) { accountMenu.hidden = true; accountToggle.setAttribute("aria-expanded", "false"); } });
+  document.addEventListener("keydown", event => { if (event.key === "Escape") { accountMenu.hidden = true; accountToggle.setAttribute("aria-expanded", "false"); } });
   const title = document.querySelector("#authTitle");
   const intro = document.querySelector("#authIntro");
   const form = document.querySelector("#authForm");
@@ -233,6 +238,7 @@ async function start() {
   });
   switchButton.addEventListener("click", () => { creating = !creating; error.classList.remove("is-success"); error.textContent = ""; mode(); });
   document.querySelector("#authLogout").addEventListener("click", async () => {
+    accountMenu.hidden = true; accountToggle.setAttribute("aria-expanded", "false");
     if (activeUserId) await saveNow();
     await globalAuth.logout();
   });
