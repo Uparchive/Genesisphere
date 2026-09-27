@@ -1,6 +1,10 @@
+Warning: truncated output (original token count: 6703)
+Total output lines: 358
+
 // Planar Newtonian N-body gravity, stable fixed-step integration, and solid-body impacts.
 import{earthMassesToSolar,effectiveStellarState}from"./stellar-state.js";
 import{stellarLuminosity}from"./habitability.js";
+import{DomainEvent}from"../../core/event-bus.js";
 
 export const SAME_ORBIT_TOLERANCE_AU=.01;
 export const GRAVITATIONAL_CONSTANT_AU=4*Math.PI**2*(36**2)/(365.25**2);
@@ -163,73 +167,7 @@ export function createGravitySystem(engine,onCollision=()=>{},options={}){
   for(const group of groupBodies(bodies))for(const[first,second]of nearbyPairs(group)){
    const a=states.get(first.id),b=states.get(second.id),dx=b.x-a.x,dy=b.y-a.y,r2=dx*dx+dy*dy+SOFTENING_AU**2;
    const inverseR3=1/(r2*Math.sqrt(r2)),factor=GRAVITATIONAL_CONSTANT_AU*inverseR3;
-   const aa=acceleration.get(first.id),ab=acceleration.get(second.id);
-   if(receivesGravity(first,second,masses)){aa.x+=factor*masses.get(second.id)*dx;aa.y+=factor*masses.get(second.id)*dy}
-   if(receivesGravity(second,first,masses)){ab.x-=factor*masses.get(first.id)*dx;ab.y-=factor*masses.get(first.id)*dy}
-  }
-  return acceleration;
- }
- function integrate(dt){
-  const bodies=liveEntities(engine);if(!bodies.length)return;
-  const before=new Map(bodies.map(entity=>{const s=states.get(entity.id);return[entity.id,{x:s.x,y:s.y}]}));
-  const start=accelerationFor(bodies);
-  for(const entity of bodies){const s=states.get(entity.id),a=start.get(entity.id);s.x+=s.vx*dt+.5*a.x*dt*dt;s.y+=s.vy*dt+.5*a.y*dt*dt}
-  const end=accelerationFor(bodies);
-  for(const entity of bodies){const s=states.get(entity.id),a0=start.get(entity.id),a1=end.get(entity.id);s.vx+=.5*(a0.x+a1.x)*dt;s.vy+=.5*(a0.y+a1.y)*dt}
-  resolveCollisions(bodies,before);
- }
- function momentumMerge(first,second,m1,m2){
-  const a=states.get(first.id),b=states.get(second.id),total=m1+m2;
-  return{x:(a.x*m1+b.x*m2)/total,y:(a.y*m1+b.y*m2)/total,vx:(a.vx*m1+b.vx*m2)/total,vy:(a.vy*m1+b.vy*m2)/total};
- }
- function ingestPlanet(planet,star,time){
-  // Planetary bodies do not displace stellar motion in this gameplay model.
-  if(planet.orbitId)engine.remove(planet.orbitId);engine.remove(planet.id);states.delete(planet.id);trails.delete(planet.id);
-  const massEarth=Math.max(.01,planet.massEarth||1),addedMassSolar=earthMassesToSolar(massEarth);
-  const event=Object.freeze({kind:"STELLAR_INGESTION",simulationTime:time,starId:star.id,parentStarId:planet.parentStarId,planetId:planet.id,bodyType:"cosmic.terrestrial-planet",systemId:planet.systemId,massEarth,addedMassSolar,starMassSolarBefore:star.massSolar||1});
-  engine.world.record("STELLAR_INGESTION",event);engine.bus.emit("star:ingested-planet",event);
-  const impact={kind:"STELLAR_INGESTION",starId:star.id,star,planet,massEarth,addedMassSolar,simulationTime:time,event};onCollision(impact);
- }
- function ingestAsteroid(asteroid,star,time){
-  const a=states.get(asteroid.id),s=states.get(star.id),starMass=entityMassSolar(engine,star),asteroidMass=entityMassSolar(engine,asteroid),total=starMass+asteroidMass;
-  s.vx=(s.vx*starMass+a.vx*asteroidMass)/total;s.vy=(s.vy*starMass+a.vy*asteroidMass)/total;
-  engine.remove(asteroid.id);states.delete(asteroid.id);trails.delete(asteroid.id);
-  const massEarth=Math.max(0,asteroid.massEarth||0),addedMassSolar=earthMassesToSolar(massEarth);
-  const event=Object.freeze({kind:"STELLAR_INGESTION",simulationTime:time,starId:star.id,asteroidId:asteroid.id,bodyType:"cosmic.asteroid",systemId:asteroid.systemId,massEarth,addedMassSolar,starMassSolarBefore:star.massSolar||1});
-  engine.world.record("STELLAR_INGESTION",event);engine.bus.emit("star:ingested-asteroid",event);
-  onCollision({kind:"ASTEROID_STELLAR_IMPACT",starId:star.id,star,asteroid,massEarth,positionAU:{x:s.x,y:s.y},simulationTime:time,event});
- }
- function mergeStars(first,second,time){
-  const firstMass=entityMassSolar(engine,first),secondMass=entityMassSolar(engine,second),survivor=firstMass>=secondMass?first:second,absorbed=survivor===first?second:first;
-  const survivorMass=survivor===first?firstMass:secondMass,absorbedMass=absorbed===first?firstMass:secondMass;
-  const firstState=states.get(first.id),secondState=states.get(second.id),merged=momentumMerge(first,second,firstMass,secondMass);
-  const origin=systemOriginAU(survivor.systemId);
-  const updated=replaceEntity(engine,survivor,{positionAU:{x:merged.x-origin.x,y:merged.y-origin.y},velocityAUPerSecond:{x:merged.vx,y:merged.vy},massSolar:firstMass+secondMass,radiusSolar:Math.cbrt((first.radiusSolar||1)**3+(second.radiusSolar||1)**3),temperatureK:((firstMass*(first.temperatureK||5780)**4+secondMass*(second.temperatureK||5780)**4)/(firstMass+secondMass))**.25});
-  states.delete(absorbed.id);trails.delete(absorbed.id);states.set(updated.id,{...merged,group:gravityGroup(updated)});
-  engine.remove(absorbed.id);
-  for(const planet of engine.world.byType("cosmic.terrestrial-planet").filter(item=>item.parentStarId===absorbed.id)){
-   const periodDays=365.25*Math.sqrt(Math.max(.001,(planet.orbit?.semiMajorAxisAU||1)**3)/Math.max(.01,updated.massSolar||1));
-   replaceEntity(engine,planet,{parentStarId:updated.id,orbit:{...planet.orbit,parentStarId:updated.id,periodDays}});
-  }
-  const event=Object.freeze({kind:"STELLAR_MERGER",simulationTime:time,systemId:survivor.systemId,starId:updated.id,remnantStarId:updated.id,absorbedStarId:absorbed.id,massSolar:firstMass+secondMass,positionAU:{x:merged.x,y:merged.y}});
-  engine.world.record("STELLAR_MERGER",event);engine.bus.emit("star:merged",event);
-  onCollision({kind:"STELLAR_COLLISION",starId:updated.id,star:updated,survivor,absorbed,simulationTime:time,event});
- }
- function absorbIntoBlackHole(body,blackHole,time){
-  const bodyState=states.get(body.id),holeState=states.get(blackHole.id),bodyMass=entityMassSolar(engine,body),holeMass=entityMassSolar(engine,blackHole),totalMass=bodyMass+holeMass;
-  const merged={x:(bodyState.x*bodyMass+holeState.x*holeMass)/totalMass,y:(bodyState.y*bodyMass+holeState.y*holeMass)/totalMass,vx:(bodyState.vx*bodyMass+holeState.vx*holeMass)/totalMass,vy:(bodyState.vy*bodyMass+holeState.vy*holeMass)/totalMass};
-  if(body.type==="cosmic.terrestrial-planet"&&body.orbitId)engine.remove(body.orbitId);
-  engine.remove(body.id);states.delete(body.id);trails.delete(body.id);
-  const origin=systemOriginAU(blackHole.systemId),eventHorizonRadiusAU=1.974e-8*totalMass,captureRadiusAU=Math.max(eventHorizonRadiusAU,.02*Math.cbrt(totalMass));
-  const updated=replaceEntity(engine,blackHole,{massSolar:totalMass,positionAU:{x:merged.x-origin.x,y:merged.y-origin.y},velocityAUPerSecond:{x:merged.vx,y:merged.vy},eventHorizonRadiusAU,captureRadiusAU});
-  states.set(updated.id,{...merged,group:gravityGroup(updated)});
-  const event=Object.freeze({kind:"BLACK_HOLE_ABSORPTION",simulationTime:time,systemId:updated.systemId,blackHoleId:updated.id,absorbedBodyId:body.id,absorbedBodyType:body.type,absorbedMassSolar:bodyMass,massSolarAfter:totalMass,eventHorizonRadiusAU,positionAU:{x:merged.x,y:merged.y}});
-  engine.world.record("BLACK_HOLE_ABSORPTION",event);engine.bus.emit("black-hole:absorbed",event);
-  onCollision({kind:"BLACK_HOLE_ABSORPTION",blackHole:updated,body,positionAU:event.positionAU,simulationTime:time,event});
- }
- function shatterPlanets(first,second,time){
-  const a=states.get(first.id),b=states.get(second.id),m1=entityMassSolar(engine,first),m2=entityMassSolar(engine,second),total=m1+m2;
-  const totalEarth=Math.max(.01,first.massEarth||1)+Math.max(.01,second.massEarth||1);
+   const aa=acceleration.get(first.id),ab=accelera…1703 tokens truncated…sEarth||1)+Math.max(.01,second.massEarth||1);
   const x=(a.x*m1+b.x*m2)/total,y=(a.y*m1+b.y*m2)/total,vx=(a.vx*m1+b.vx*m2)/total,vy=(a.vy*m1+b.vy*m2)/total;
   const relativeSpeed=Math.hypot(a.vx-b.vx,a.vy-b.vy),ejectionSpeed=Math.max(.005,relativeSpeed*.2),origin=systemOriginAU(first.systemId);
   for(const id of new Set([first.orbitId,second.orbitId].filter(Boolean)))engine.remove(id);
@@ -241,7 +179,7 @@ export function createGravitySystem(engine,onCollision=()=>{},options={}){
   }
   const positionAU={x,y};
   const event=Object.freeze({kind:"PLANET_COLLISION",at:time,simulationTime:time,systemId:first.systemId,firstPlanetId:first.id,secondPlanetId:second.id,firstParentStarId:first.parentStarId,secondParentStarId:second.parentStarId,massEarth:totalEarth,fragmentCount:fragments.length,fragmentIds:fragments.map(fragment=>fragment.id),positionAU});
-  engine.world.record("PLANET_COLLISION",event);engine.bus.emit("planet:collision",event);
+  engine.world.record("PLANET_COLLISION",event);engine.bus.emit("planet:collision",event);engine.bus.emit(DomainEvent.CollisionOccurred,event);
   onCollision({kind:"PLANET_COLLISION",first,second,fragments,position:positionAU,event});
  }
  function asteroidHitsPlanet(asteroid,planet,time){
@@ -250,7 +188,7 @@ export function createGravitySystem(engine,onCollision=()=>{},options={}){
   const updated=replaceEntity(engine,planet,{massEarth:newMassEarth,radiusEarth:Math.cbrt(Math.max(.01,planet.radiusEarth||1)**3+massEarth),collisionCount:(planet.collisionCount||0)+1,lastCollisionAt:time});
   engine.remove(asteroid.id);states.delete(asteroid.id);trails.delete(asteroid.id);
   const event=Object.freeze({kind:"ASTEROID_PLANET_IMPACT",simulationTime:time,systemId:asteroid.systemId,asteroidId:asteroid.id,planetId:updated.id,massEarth,planetMassEarthAfter:newMassEarth,positionAU:{x:a.x,y:a.y}});
-  engine.world.record("ASTEROID_PLANET_IMPACT",event);engine.bus.emit("planet:asteroid-impact",event);
+  engine.world.record("ASTEROID_PLANET_IMPACT",event);engine.bus.emit("planet:asteroid-impact",event);engine.bus.emit(DomainEvent.CollisionOccurred,event);
   onCollision({kind:"ASTEROID_PLANET_IMPACT",asteroid,planet:updated,positionAU:event.positionAU,simulationTime:time,event});
  }
  function resolveCollisions(bodies,before){

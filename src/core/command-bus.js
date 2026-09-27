@@ -1,3 +1,5 @@
+import { DomainEvent } from "./event-bus.js";
+
 /** A stable, machine-readable failure returned by Core command validation. */
 export class DomainError extends Error {
   constructor(code, message, details = {}) {
@@ -25,7 +27,16 @@ export class CommandBus {
     this.register("SetPaused", command => { this.engine.state.paused = Boolean(command.value); return this.engine.state.paused; });
     this.register("AdvanceSimulationTime", command => {
       if (!Number.isFinite(command.deltaMs) || command.deltaMs < 0) throw new DomainError("INVALID_TIME_DELTA", "Simulation time delta must be a non-negative finite number", { deltaMs: command.deltaMs });
-      return this.engine.state.setSimulationTime(this.engine.state.simulationTime + command.deltaMs);
+      const previousTime = this.engine.state.simulationTime;
+      const currentTime = this.engine.state.setSimulationTime(previousTime + command.deltaMs);
+      if (currentTime > previousTime) {
+        this.engine.bus.emit(DomainEvent.TimeAdvanced, Object.freeze({
+          previousTime,
+          currentTime,
+          deltaMs: currentTime - previousTime
+        }));
+      }
+      return currentTime;
     });
   }
 

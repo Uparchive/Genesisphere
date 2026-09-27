@@ -6,6 +6,7 @@ import { effectiveStellarState } from "../src/systems/stellar/stellar-state.js";
 function createEngine(seed) {
   const entities = new Map(seed.map(entity => [entity.id, Object.freeze({ ...entity })]));
   const events = [];
+  const domainEvents = [];
   let nextId = 0;
   const world = {
     get: id => entities.get(id),
@@ -27,7 +28,8 @@ function createEngine(seed) {
   return {
     world,
     events,
-    bus: { emit() {} },
+    bus: { emit(type, payload) { domainEvents.push({ type, payload }); } },
+    domainEvents,
     remove(id) {
       const entity = entities.get(id) ?? null;
       if (entity) events.push({ kind: "ENTITY_DESTROYED", entity, at: 0 });
@@ -93,6 +95,8 @@ test("a planet is absorbed by any star it physically contacts in its system", ()
   assert.equal(engine.world.has("approaching-planet"), false);
   assert.equal(engine.events.find(event => event.kind === "STELLAR_INGESTION")?.starId, "star-2");
   assert.equal(impacts[0]?.kind, "STELLAR_INGESTION");
+  assert.equal(engine.domainEvents.filter(item => item.type === "collision:occurred").length, 1);
+  assert.equal(engine.domainEvents.find(item => item.type === "collision:occurred")?.payload.kind, "STELLAR_INGESTION");
 });
 
 test("a planet outside all stellar contact radii remains in orbit", () => {
