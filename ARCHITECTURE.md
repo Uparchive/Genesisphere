@@ -120,3 +120,17 @@ O Worker valida JSON, tamanho e versão de contrato; o Durable Object valida inv
 ## 5. Validação disponível
 
 Não há comando de build nem workflow de CI. `npm test` executa os testes de regressão de colisão com o test runner nativo do Node, sem dependências de projeto. Os testes cobrem criação do buraco negro, validação da massa, captura gravitacional, estabilidade de órbita, perturbações entre estrelas de sistemas vizinhos no mesmo universo, deflexão de asteroides, mudança térmica, colisões, isolamento entre universos e transformações/determinismo do espaço infinito. A configuração Wrangler/TOML também foi validada sintaticamente. Definir um comando de build junto da futura implementação do Worker.
+
+## 6. Atualização — autenticação e persistência preparadas
+
+Esta seção substitui a proposta de provedor de autenticação acima para a implementação iniciada em 2026-09-27.
+
+- O Firebase Authentication é a fonte de contas, com e-mail/senha e Google. `src/auth/config.js` deixa o recurso desabilitado até serem fornecidas a configuração web Firebase e a URL do Worker. Sem essas configurações, o jogo continua no modo demonstração.
+- O Worker em `src/cloudflare/worker.js` valida Firebase ID tokens por assinatura pública, projeto, emissor e validade. O UID verificado escolhe o Durable Object; o cliente nunca escolhe o dono no payload.
+- Cada UID tem um único Durable Object SQLite. O snapshot guarda entidades, até 500 registros recentes do histórico, relógio e estado do integrador gravitacional. Firebase não guarda o save, e não foi acrescentado D1; catálogo de múltiplos universos poderá ser adicionado quando esse recurso existir.
+- O navegador restaura o save após login e sincroniza estado e relógio a cada 30 segundos. Uma concessão de atividade evita que o integrador remoto e a sessão ativa avancem o mesmo universo em paralelo.
+- Sem sessão ativa, um alarme do Durable Object avança a simulação em lotes de até 15 segundos simulados. Intervalos atrasados são retomados em lotes posteriores. Essa primeira versão executa a engine atual de gravidade e colisões; eventos narrativos e geração de vida ainda não existem.
+- `wrangler.toml` configura o Worker API, o binding SQLite e sua migração. O Worker será um endpoint `workers.dev` separado, pois o front-end continua servido pelo GitHub Pages.
+- Os arquivos de setup e limites estão em `AUTH_AND_CLOUDFLARE.md`. Firebase e Cloudflare ainda precisam ser configurados nas contas externas antes de habilitar ou publicar o login. A taxa de alarmes/CPU precisa ser acompanhada e os universos precisam de limites de entidades antes de cadastro público.
+
+Os testes de snapshot e restauração da gravidade estão em `tests/persistence.test.mjs`; `npm test` deve ser executado para validar também as funcionalidades existentes. Wrangler CLI e credenciais não são incluídos no repositório.

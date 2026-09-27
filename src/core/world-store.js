@@ -9,4 +9,11 @@ export class WorldStore{
  byType(type){return this.all().filter(entity=>entity.type===type)}
  record(kind,details={}){const event=Object.freeze({kind,...details,at:Date.now()});this.events.push(event);return event}
  history(){return [...this.events]}
+ snapshot(){return{version:1,entities:this.all(),events:this.events.slice(-500)}}
+ restore(snapshot){
+  if(!snapshot||snapshot.version!==1||!Array.isArray(snapshot.entities)||!Array.isArray(snapshot.events))throw new Error("Unsupported world snapshot");
+  const entities=new Map();
+  for(const entity of snapshot.entities){if(!entity||typeof entity.id!=="string"||typeof entity.type!=="string"||entities.has(entity.id))throw new Error("Invalid world snapshot entity");entities.set(entity.id,Object.freeze(structuredClone(entity)))}
+  this.entities=entities;this.events=snapshot.events.slice(-500).map(event=>Object.freeze(structuredClone(event)));
+ }
 }

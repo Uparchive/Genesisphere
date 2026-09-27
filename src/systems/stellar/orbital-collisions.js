@@ -72,7 +72,8 @@ function liveEntities(engine){
  return [...engine.world.byType("cosmic.star"),...engine.world.byType("cosmic.black-hole"),...engine.world.byType("cosmic.terrestrial-planet"),...engine.world.byType("cosmic.asteroid")];
 }
 
-export function createGravitySystem(engine,onCollision=()=>{}){
+export function createGravitySystem(engine,onCollision=()=>{},options={}){
+ const maxStepsPerUpdate=Math.max(1,Math.floor(options.maxStepsPerUpdate||MAX_STEPS_PER_UPDATE));
  let lastTime=null;
  const states=new Map,trails=new Map,systemOrigins=new Map,habitability=new Map;let lastTrailAt=0;
  const systemEntity=systemId=>engine.world.get(systemId)?.type==="cosmic.star-system"?engine.world.get(systemId):null;
@@ -328,11 +329,20 @@ export function createGravitySystem(engine,onCollision=()=>{}){
   }
  }
  return Object.freeze({
+  snapshot(){return{version:1,lastTime,states:[...states].map(([id,state])=>[id,{...state}]),trails:[...trails].map(([id,points])=>[id,points.map(point=>({...point}))]),habitability:[...habitability],lastTrailAt}},
+  restore(snapshot){
+   if(!snapshot||snapshot.version!==1)throw new Error("Unsupported gravity snapshot");
+   states.clear();trails.clear();habitability.clear();systemOrigins.clear();
+   for(const [id,state] of snapshot.states||[]){if(engine.world.has(id)&&[state.x,state.y,state.vx,state.vy].every(Number.isFinite))states.set(id,{...state,group:gravityGroup(engine.world.get(id))})}
+   for(const [id,points] of snapshot.trails||[])if(engine.world.has(id)&&Array.isArray(points))trails.set(id,points.slice(-180).filter(point=>Number.isFinite(point.x)&&Number.isFinite(point.y)).map(point=>({...point})))
+   for(const [id,value] of snapshot.habitability||[])if(engine.world.has(id)&&typeof value==="string")habitability.set(id,value);
+   lastTime=Number.isFinite(snapshot.lastTime)?snapshot.lastTime:null;lastTrailAt=Number.isFinite(snapshot.lastTrailAt)?snapshot.lastTrailAt:0;
+  },
   update(time){
    if(lastTime===null){lastTime=time;syncNewBodies(time);updateHabitability();appendTrails();return[]}
    if(time<=lastTime)return[];
    syncNewBodies(lastTime);
-   const elapsed=(time-lastTime)/1000,steps=Math.min(MAX_STEPS_PER_UPDATE,Math.max(1,Math.ceil(elapsed/FIXED_STEP_SECONDS))),dt=elapsed/steps;
+   const elapsed=(time-lastTime)/1000,steps=Math.min(maxStepsPerUpdate,Math.max(1,Math.ceil(elapsed/FIXED_STEP_SECONDS))),dt=elapsed/steps;
    for(let step=0;step<steps;step++){integrate(dt);lastTime+=dt*1000;syncNewBodies(lastTime)}
    lastTime=time;updateHabitability();appendTrails();return[];
   },
