@@ -4,7 +4,7 @@ compatibility_date = "2026-09-27"
 workers_dev = true
 
 [vars]
-FIREBASE_PROJECT_ID = "REPLACE_ME"
+FIREBASE_PROJECT_ID = "genesisphere"
 ALLOWED_ORIGINS = "https://uparchive.github.io,http://localhost:8787,http://127.0.0.1:8787"
 
 [[durable_objects.bindings]]
