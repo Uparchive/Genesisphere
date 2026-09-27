@@ -122,7 +122,11 @@ async function start() {
         const api = createWorldApi({ auth: { currentUser: user } });
         const result = await api.load();
         if (result.snapshot) restore(result.snapshot);
-        else await api.save(snapshot());
+        else {
+          const saved = localStorage.getItem(localKey);
+          if (saved) restore(JSON.parse(saved));
+          await api.save(snapshot());
+        }
       } else {
         const saved = localStorage.getItem(localKey);
         if (saved) restore(JSON.parse(saved));
