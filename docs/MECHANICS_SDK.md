@@ -7,6 +7,11 @@ Register a definition with `id`, `version`, `sdk: true`, `requirements`, `valida
 
 The restricted context exposes only `context.query.entity(id)`, `context.query.entitiesByType(type)`, `context.query.template(id)`, `context.query.templates(category)`, `context.commands.dispatch(command)`, and `context.events.emit(type, payload)`. It deliberately has no renderer, persistence repository, database, or mutable engine.
 
+## Power presentation and availability
+Powers may include a `presentation` record with UI-only fields such as `label`, `icon`, `description`, `surface`, `interaction`, and `shortcut`. Keep these fields separate from `validate()` and `execute()`. `PowerRegistry.catalog()` returns only the registered IDs and presentation fields, so the UI does not receive the implementation functions. `PowerRegistry.checkAvailability(id, engine, input)` runs the Core requirements and validator without executing the power or mutating the world; the UI uses its result to show a disabled state and the Core-provided reason. Power execution still validates the actual request before any mutation.
+
+`surface: "inventory"` adds the power to the construction inventory; `surface: "selection"` makes it available in the selected-entity actions. `interaction` selects a presentation flow already supported by the interface, while `shortcut` optionally provides a keyboard shortcut. Simple powers can use `interaction: "invoke"` and an optional presentation `input` as their default request.
+
 ## Minimal template
 ```js
 engine.powers.register({
