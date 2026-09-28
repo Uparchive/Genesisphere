@@ -22,6 +22,9 @@ export class CommandBus {
     this.register("SetEntityProperty", command => this.engine.updateEntityProperties(command.entityId, { [command.property]: command.value }));
     this.register("UpdateEntity", command => this.engine.updateEntityProperties(command.entityId, command.changes));
     this.register("ExecutePower", command => this.engine.executePower(command.powerId, command.input));
+    this.register("StartBigBang", command => this.engine.bigBang.start(command.input));
+    this.register("UpdateBigBang", command => this.engine.bigBang.update(command.input));
+    this.register("RecordWorldEvent", command => this.engine.world.record(command.kind, command.details));
     this.register("SetSimulationTime", command => this.engine.state.setSimulationTime(command.value));
     this.register("SetTimeScale", command => this.engine.state.setTimeScale(command.value));
     this.register("SetPaused", command => { this.engine.state.paused = Boolean(command.value); return this.engine.state.paused; });

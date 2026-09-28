@@ -1,23 +1,8 @@
 import test from"node:test";
 import assert from"node:assert/strict";
-import{CosmosModule}from"../src/modules/cosmos.js";
-import{CosmicPowersModule}from"../src/powers/cosmic-powers.js";
-import{TemplateModule}from"../src/templates/template-module.js";
+import{createGenesisEngine}from"../src/game-engine.js";
 import{BIG_BANG_BLACK_HOLE_CHANCE,BIG_BANG_CELL_SIZE,BIG_BANG_MAX_CELLS_PER_UPDATE,BIG_BANG_SYSTEM_CHANCE}from"../src/systems/stellar/big-bang.js";
-function makeEngine(){
- const definitions=new Map,entities=new Map,powers=new Map,templates=new Map,events=[];let id=0;
- const engine={
-  registry:{register:(type,definition)=>definitions.set(type,definition),get:type=>definitions.get(type)},
-  templates:{register:item=>templates.set(item.id,item),get:key=>templates.get(key)||null,all:category=>[...templates.values()].filter(item=>!category||item.category===category)},
-  world:{get:key=>entities.get(key)||null,has:key=>entities.has(key),all:()=>[...entities.values()],byType:type=>[...entities.values()].filter(item=>item.type===type),add(item){const value=Object.freeze({...item});entities.set(value.id,value);events.push({kind:"ENTITY_CREATED",entity:value});return value},remove(key){const value=entities.get(key)||null;entities.delete(key);if(value)events.push({kind:"ENTITY_DESTROYED",entity:value});return value},record:(kind,details={})=>{const event=Object.freeze({kind,...details});events.push(event);return event},history:()=>[...events]},
-  bus:{emit:(kind,detail)=>events.push({kind,detail})},powers:{register:power=>powers.set(power.id,power)},
-  create(type,props={}){const def=definitions.get(type);if(!def)throw Error("Unknown type "+type);return engine.world.add({id:"entity-"+(++id),type,...def.create(props)})},
-  remove:key=>engine.world.remove(key),
-  usePower(key,input={}){const power=powers.get(key),valid=power.validate({engine,input});if(valid!==true)throw new Error(valid);return power.execute({engine,input})}
- };
- CosmosModule.install(engine);TemplateModule.install(engine);CosmicPowersModule.install(engine);
- return engine;
-}
+const makeEngine=()=>createGenesisEngine({empty:false});
 function createRegion(engine,name="Genesis"){
  const universe=engine.create("cosmic.empty-space"),region=engine.usePower("CREATE_SYSTEM",{universeId:universe.id,name,position:{x:.5,y:.5}});
  return{universe,region};
@@ -27,7 +12,7 @@ function moveInto(engine,region,seed){
 }
 function visitSquare(engine,region,side=18){
  const bounds={left:.5,right:.5+(side+.5)*BIG_BANG_CELL_SIZE,top:.5,bottom:.5+(side+.5)*BIG_BANG_CELL_SIZE};
- for(let i=0;i<Math.ceil((side+1)**2/BIG_BANG_MAX_CELLS_PER_UPDATE)+5;i++)engine.bigBang.update({systemId:region.id,bounds});
+ for(let i=0;i<Math.ceil((side+1)**2/BIG_BANG_MAX_CELLS_PER_UPDATE)+5;i++)engine.commands.dispatch({type:"UpdateBigBang",input:{systemId:region.id,bounds}});
  return bounds;
 }
 test("Big Bang starts in a top-level region and rejects nested solar systems",()=>{
@@ -51,7 +36,7 @@ test("Big Bang primes visible cells once and does nothing while the player remai
  const engine=makeEngine(),{region}=createRegion(engine),bounds={left:.5,right:.5+BIG_BANG_CELL_SIZE*.8,top:.5,bottom:.5+BIG_BANG_CELL_SIZE*.8};
  moveInto(engine,region,"still-seed");
  const before=engine.bigBang.status().visitedCells;
- for(let i=0;i<120;i++)engine.bigBang.update({systemId:region.id,bounds});
+ for(let i=0;i<120;i++)engine.commands.dispatch({type:"UpdateBigBang",input:{systemId:region.id,bounds}});
  assert.equal(engine.bigBang.status().visitedCells,before);
  assert.equal(engine.world.byType("cosmic.star-system").length,1);
 });

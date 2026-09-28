@@ -69,6 +69,26 @@ test("simulation time advances an orbiting planet's canonical position", () => {
   assert.equal(engine.world.get(planet.id).id, planet.id);
 });
 
+test("physics collisions mutate the live Core only through registered commands", () => {
+  const engine = createGenesisEngine({ empty: false });
+  const star = engine.create("cosmic.star", { systemId: "system-1", positionAU: { x: 0, y: 0 }, massSolar: 1 });
+  const planets = [0, 1].map(() => engine.create("cosmic.terrestrial-planet", {
+    systemId: "system-1", parentStarId: star.id, semiMajorAxisAU: 10,
+    periodDays: 365.25, eccentricity: 0, phaseRadians: 0
+  }));
+  const commands = [], dispatch = engine.commands.dispatch.bind(engine.commands);
+  engine.commands.dispatch = command => { commands.push(command.type); return dispatch(command); };
+  const physics = createGravitySystem(engine);
+  physics.update(0);
+  physics.update(16);
+
+  assert.ok(planets.every(planet => !engine.world.has(planet.id)));
+  assert.equal(engine.world.byType("cosmic.asteroid").length, 8);
+  assert.ok(commands.includes("RemoveEntity"));
+  assert.equal(commands.filter(type => type === "CreateEntity").length, 8);
+  assert.ok(engine.world.history().some(event => event.kind === "PLANET_COLLISION"));
+});
+
 test("JSON snapshot round-trip restores created celestial entities and history", () => {
   const source = createGenesisEngine();
   const system = source.world.byType("cosmic.star-system")[0];

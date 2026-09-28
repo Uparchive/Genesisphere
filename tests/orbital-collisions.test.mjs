@@ -25,27 +25,19 @@ function createEngine(seed) {
       return event;
     }
   };
-  return {
+  const engine={
     world,
     events,
     bus: { emit(type, payload) { domainEvents.push({ type, payload }); } },
     domainEvents,
-    remove(id) {
-      const entity = entities.get(id) ?? null;
-      if (entity) events.push({ kind: "ENTITY_DESTROYED", entity, at: 0 });
-      entities.delete(id);
-      return entity;
-    },
-    create(type, props = {}) {
-      const entity = {
-        id: `created-${++nextId}`,
-        type,
-        ...props,
-        planetKind: props.kind ?? "terrestrial"
-      };
-      return world.add(entity);
-    }
+    commands:{dispatch(command){
+      if(command.type==="CreateEntity")return world.add({id:`created-${++nextId}`,type:command.entityType,...command.properties,planetKind:command.properties?.kind??"terrestrial"});
+      if(command.type==="RemoveEntity"){const entity=entities.get(command.entityId)??null;if(entity)events.push({kind:"ENTITY_DESTROYED",entity,at:0});entities.delete(command.entityId);return entity}
+      if(command.type==="UpdateEntity"){const previous=entities.get(command.entityId);if(!previous)return null;const updated=Object.freeze({...previous,...command.changes});entities.set(command.entityId,updated);events.push({kind:"ENTITY_UPDATED",entity:updated,at:0});return updated}
+      throw new Error(`Unsupported physics test command: ${command.type}`);
+    }}
   };
+  return engine;
 }
 
 const star = (id, options = {}) => ({
@@ -194,8 +186,7 @@ test("stellar ingestion before a merger is folded into the merger baseline only 
   const engine = createEngine([star("star-1", { massSolar: 1 })]);
   engine.world.record("STELLAR_INGESTION", { starId: "star-1", massEarth: 332946, at: 1, simulationTime: 1 });
   const mergedStar = { ...engine.world.get("star-1"), massSolar: 2 };
-  engine.remove("star-1");
-  engine.world.add(mergedStar);
+  engine.commands.dispatch({type:"UpdateEntity",entityId:"star-1",changes:{massSolar:mergedStar.massSolar}});
   engine.world.record("STELLAR_MERGER", { starId: "star-1", massSolar: 2, at: 2, simulationTime: 2 });
 
   assert.equal(effectiveStellarState(engine, engine.world.get("star-1")).massSolar, 2);

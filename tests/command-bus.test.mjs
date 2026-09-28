@@ -29,7 +29,7 @@ test("invalid commands and invalid power requests return stable domain errors wi
   );
   assert.throws(
     () => engine.usePower("CREATE_PLANET", {}),
-    error => error instanceof DomainError && error.code === "POWER_VALIDATION_FAILED" && /valid systemId/.test(error.message)
+    error => error instanceof DomainError && error.code === "POWER_VALIDATION_FAILED" && /Missing requirements for CREATE_PLANET:/.test(error.message)
   );
   assert.deepEqual(engine.world.snapshot(), before);
 });
