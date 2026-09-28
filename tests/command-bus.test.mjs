@@ -75,3 +75,16 @@ test("legacy time controls and frame advancement are routed through Core command
   engine.commands.dispatch({ type: "AdvanceSimulationTime", deltaMs: 25 });
   assert.equal(engine.state.simulationTime, 35);
 });
+
+test("world snapshot restoration is a Core command and does not replay old events", () => {
+  const source = createGenesisEngine();
+  const snapshot = source.world.snapshot();
+  const engine = createGenesisEngine({ empty: false });
+  const createdEvents = [];
+  engine.bus.on("entity:created", entity => createdEvents.push(entity.id));
+
+  engine.commands.dispatch({ type: "RestoreWorldSnapshot", snapshot });
+
+  assert.deepEqual(engine.world.snapshot(), snapshot);
+  assert.deepEqual(createdEvents, []);
+});

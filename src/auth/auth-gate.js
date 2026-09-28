@@ -68,7 +68,7 @@ function snapshot() {
 
 function restore(value) {
   const state = deserializeUniverseSnapshot(value);
-  engine.world.restore(state.world);
+  engine.commands.dispatch({ type: "RestoreWorldSnapshot", snapshot: state.world });
   runtime.collisions.restore(state.gravity);
   runtime.setSimulationTime(state.simulationTime);
   runtime.setTimeScale(state.timeScale);

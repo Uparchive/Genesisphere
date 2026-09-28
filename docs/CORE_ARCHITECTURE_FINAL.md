@@ -25,9 +25,9 @@ Não há alteração no schema nem migração remota destrutiva nesta missão. O
 
 ## Fronteiras e dependências
 
-O estado canônico reside em `UniverseState`/`WorldStore`; a aplicação entrega mudanças canônicas via `CommandBus`. O Renderer recebe view models/snapshots. O Core, Entity Model, sistemas de física e sistemas estelares não importam UI, Firebase, Cloudflare, armazenamento do navegador ou bibliotecas de renderização.
+O estado canônico reside em `UniverseState`/`WorldStore`; a aplicação encaminha criação, atualização, remoção, restauração de snapshots e eventos de mundo pelo `CommandBus`. O Renderer recebe view models/snapshots. O Core, Entity Model, sistemas de física e sistemas estelares não importam UI, Firebase, Cloudflare, armazenamento do navegador ou bibliotecas de renderização.
 
-`npm run build` agora verifica sintaxe e rejeita imports proibidos conhecidos nos diretórios `src/core/`, `src/entities/`, `src/systems/physics/` e `src/systems/stellar/`. A regra de build percorre imports estáticos, reexports e `import()` dinâmico nessas fronteiras; a inspeção de dependências cobriu todos os módulos JavaScript de `src/`.
+`npm run build` agora verifica sintaxe, rejeita imports proibidos conhecidos nos diretórios `src/core/`, `src/entities/`, `src/systems/physics/` e `src/systems/stellar/`, e rejeita mutações diretas conhecidas de `WorldStore` fora do Core. As regras percorrem imports estáticos, reexports, `import()` dinâmico e módulos de aplicação, sistemas, poderes e renderer; a inspeção de dependências cobriu todos os módulos JavaScript de `src/` e o módulo inline de `index.html`.
 
 ## Verificação
 

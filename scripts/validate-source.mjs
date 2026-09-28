@@ -45,6 +45,17 @@ function checkCoreImports(path, source) {
   }
 }
 
+function checkMutationBoundary(path, source) {
+  const relativePath = relative(root, path).replaceAll("\\", "/");
+  const adapterOrGameplay = /^(?:src\/(?:auth|cloudflare|modules|powers|rendering|systems)\/|index\.html$)/.test(relativePath);
+  if (!adapterOrGameplay) return;
+
+  const directMutation = /\b(?:engine|genesis)\.world\.(?:add|remove|update|record|restore)\s*\(/;
+  if (directMutation.test(source)) {
+    throw new Error(`Direct world mutation outside Core in ${relativePath}; dispatch a Core command instead`);
+  }
+}
+
 try {
   const requiredEntries = ["index.html", "src/app.js", "src/auth/auth-gate.js", "src/cloudflare/worker.js", "wrangler.toml"];
   for (const path of requiredEntries) await readFile(join(root, path));
@@ -52,12 +63,15 @@ try {
   const sourceFiles = await collectJavaScript(join(root, "src"));
   for (const path of sourceFiles) {
     check(path);
-    checkCoreImports(path, await readFile(path, "utf8"));
+    const source = await readFile(path, "utf8");
+    checkCoreImports(path, source);
+    checkMutationBoundary(path, source);
   }
 
   const html = await readFile(join(root, "index.html"), "utf8");
   const inlineModule = [...html.matchAll(/<script\b(?=[^>]*\btype=["']module["'])(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)][0]?.[1];
   if (!inlineModule) throw new Error("No inline module script was found in index.html");
+  checkMutationBoundary(join(root, "index.html"), inlineModule);
   const inlinePath = join(temporaryDirectory, "index-inline.mjs");
   await writeFile(inlinePath, inlineModule);
   check(inlinePath);

@@ -193,7 +193,7 @@ export class UniverseDO {
     let nextSnapshot = row.snapshot;
     if (plan.simulationDeltaMs > 0) {
       const engine = createGenesisEngine({ empty: false });
-      engine.world.restore(snapshot.world);
+      engine.commands.dispatch({ type: "RestoreWorldSnapshot", snapshot: snapshot.world });
       const gravity = createGravitySystem(engine, undefined, { maxStepsPerUpdate: 4096 });
       gravity.restore(snapshot.gravity);
       gravity.update(plan.simulationTime);

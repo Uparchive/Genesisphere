@@ -86,6 +86,7 @@ test("physics collisions mutate the live Core only through registered commands",
   assert.equal(engine.world.byType("cosmic.asteroid").length, 8);
   assert.ok(commands.includes("RemoveEntity"));
   assert.equal(commands.filter(type => type === "CreateEntity").length, 8);
+  assert.ok(commands.includes("RecordWorldEvent"));
   assert.ok(engine.world.history().some(event => event.kind === "PLANET_COLLISION"));
 });
 
@@ -109,7 +110,7 @@ test("JSON snapshot round-trip restores created celestial entities and history",
   const serialized = JSON.parse(JSON.stringify(source.world.snapshot()));
   const target = createGenesisEngine({ empty: false });
 
-  target.world.restore(serialized);
+  target.commands.dispatch({ type: "RestoreWorldSnapshot", snapshot: serialized });
 
   assert.deepEqual(target.world.all(), source.world.all());
   assert.deepEqual(target.world.history(), source.world.history());

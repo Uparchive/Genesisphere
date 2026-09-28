@@ -21,6 +21,7 @@ export class CommandBus {
     this.register("RemoveEntity", command => this.engine.removeEntity(command.entityId));
     this.register("SetEntityProperty", command => this.engine.updateEntityProperties(command.entityId, { [command.property]: command.value }));
     this.register("UpdateEntity", command => this.engine.updateEntityProperties(command.entityId, command.changes));
+    this.register("RestoreWorldSnapshot", command => this.engine.world.restore(command.snapshot));
     this.register("ExecutePower", command => this.engine.executePower(command.powerId, command.input));
     this.register("StartBigBang", command => this.engine.bigBang.start(command.input));
     this.register("UpdateBigBang", command => this.engine.bigBang.update(command.input));

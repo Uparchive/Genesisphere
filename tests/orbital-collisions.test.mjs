@@ -34,6 +34,7 @@ function createEngine(seed) {
       if(command.type==="CreateEntity")return world.add({id:`created-${++nextId}`,type:command.entityType,...command.properties,planetKind:command.properties?.kind??"terrestrial"});
       if(command.type==="RemoveEntity"){const entity=entities.get(command.entityId)??null;if(entity)events.push({kind:"ENTITY_DESTROYED",entity,at:0});entities.delete(command.entityId);return entity}
       if(command.type==="UpdateEntity"){const previous=entities.get(command.entityId);if(!previous)return null;const updated=Object.freeze({...previous,...command.changes});entities.set(command.entityId,updated);events.push({kind:"ENTITY_UPDATED",entity:updated,at:0});return updated}
+      if(command.type==="RecordWorldEvent")return world.record(command.kind,command.details);
       throw new Error(`Unsupported physics test command: ${command.type}`);
     }}
   };
