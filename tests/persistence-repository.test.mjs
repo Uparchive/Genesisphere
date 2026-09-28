@@ -128,3 +128,48 @@ test("Durable Object retains and recovers the previous valid snapshot", async ()
   assert.equal(loaded.revision, 2);
   assert.deepEqual(loaded.snapshot, first);
 });
+
+test("Durable Object alarm catches up in stages from its persisted cursor without replay", async () => {
+  const originalNow = Date.now;
+  let now = 10_000;
+  Date.now = () => now;
+  try {
+    let row = null;
+    const sql = { exec(query, ...args) {
+      if (query.startsWith("SELECT")) return { toArray: () => row ? [{ ...row }] : [] };
+      if (query.startsWith("INSERT INTO universe_state")) {
+        const [snapshot, previousSnapshot, simulationTime, processedWallMs, activeUntilMs, revision, operationId] = args;
+        row = { snapshot, previous_snapshot: previousSnapshot, simulation_time: simulationTime, processed_wall_ms: processedWallMs, active_until_ms: activeUntilMs, revision, operation_id: operationId };
+      }
+      if (query.startsWith("UPDATE universe_state")) {
+        const [snapshot, simulationTime, processedWallMs] = args;
+        row = { ...row, previous_snapshot: row.snapshot, snapshot, simulation_time: simulationTime, processed_wall_ms: processedWallMs };
+      }
+      return { toArray: () => [] };
+    } };
+    const object = new UniverseDO({ storage: { sql, setAlarm: async () => {} } });
+    const saved = await object.fetch(new Request("https://universe.internal/state", {
+      method: "PUT", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ snapshot: emptySnapshot(), expectedRevision: 0, operationId: "offline-test" })
+    }));
+    assert.equal(saved.status, 200);
+
+    now = 24 * 60 * 60 * 1_000;
+    let stages = 0;
+    while (row.processed_wall_ms < now) {
+      await object.alarm();
+      stages += 1;
+      assert.ok(stages < 1_000);
+      const checkpoint = JSON.parse(row.snapshot);
+      assert.equal(checkpoint.simulationTime, row.simulation_time);
+    }
+    assert.ok(stages > 1);
+    const completedCursor = row.processed_wall_ms;
+    const completedSimulationTime = row.simulation_time;
+    await object.alarm();
+    assert.equal(row.processed_wall_ms, completedCursor);
+    assert.equal(row.simulation_time, completedSimulationTime);
+  } finally {
+    Date.now = originalNow;
+  }
+});

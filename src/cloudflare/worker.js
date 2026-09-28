@@ -1,11 +1,11 @@
 import { createGenesisEngine } from "../game-engine.js";
-import { SIMULATION_MS_PER_REAL_MS, TimeEngine } from "../core/time-engine.js";
+import { TimeEngine } from "../core/time-engine.js";
+import { MAX_OFFLINE_SIMULATION_STEP_MS, planOfflineCatchUp } from "../core/offline-catch-up.js";
 import { createGravitySystem } from "../systems/physics/physics-engine.js";
 import { deserializeUniverseSnapshot, migrateUniverseSnapshot, serializeUniverseSnapshot, validateUniverseSnapshot } from "../core/persistence.js";
 
 const JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const ALARM_MS = 60_000;
-const MAX_SIM_STEP_MS = 60_000;
 const ACTIVE_LEASE_MS = 90_000;
 const MAX_SAVE_BYTES = 2_000_000;
 let jwksCache;
@@ -169,39 +169,45 @@ export class UniverseDO {
     const row = this.current();
     if (!row) return;
     const now = Date.now();
+    if (!Number.isFinite(row.active_until_ms) || !Number.isFinite(now)) throw new Error("Invalid persisted activity clock");
     if (now < row.active_until_ms) {
       await this.ctx.storage.setAlarm(Math.max(row.active_until_ms, now + ALARM_MS));
       return;
     }
-    const elapsed = Math.max(0, now - row.processed_wall_ms);
-    if (!elapsed) { await this.ctx.storage.setAlarm(now + ALARM_MS); return; }
+
     const snapshot = deserializeUniverseSnapshot(JSON.parse(row.snapshot));
-    const timeScale = Number.isFinite(snapshot.timeScale) && snapshot.timeScale > 0
-      ? Math.max(.1, Math.min(64, snapshot.timeScale))
-      : 1;
-    const rate = snapshot.paused ? 0 : SIMULATION_MS_PER_REAL_MS * timeScale;
-    if (rate === 0) {
-      this.sql.exec("UPDATE universe_state SET processed_wall_ms = ? WHERE id = 1", now);
+    const plan = planOfflineCatchUp({
+      now,
+      processedWallMs: Number(row.processed_wall_ms),
+      simulationTime: Number(row.simulation_time),
+      snapshotSimulationTime: snapshot.simulationTime,
+      timeScale: snapshot.timeScale,
+      paused: snapshot.paused,
+      maxSimulationStepMs: MAX_OFFLINE_SIMULATION_STEP_MS
+    });
+    if (plan.processedRealMs === 0) {
       await this.ctx.storage.setAlarm(now + ALARM_MS);
       return;
     }
-    const processed = Math.min(elapsed, MAX_SIM_STEP_MS / rate);
-    const engine = createGenesisEngine({ empty: false });
-    engine.world.restore(snapshot.world);
-    const gravity = createGravitySystem(engine, undefined, { maxStepsPerUpdate: 4096 });
-    gravity.restore(snapshot.gravity);
-    const clock = new TimeEngine({
-      simulationTime: Number(row.simulation_time),
-      realTime: Number(row.processed_wall_ms),
-      timeScale
-    });
-    const advancement = clock.advance(processed);
-    const simulationTime = advancement.simulationTime;
-    gravity.update(simulationTime);
-    const next = serializeUniverseSnapshot({ ...snapshot, simulationTime, world: engine.world.snapshot(), gravity: gravity.snapshot() });
-    const processedWall = advancement.realTime;
-    this.sql.exec("UPDATE universe_state SET previous_snapshot = snapshot, snapshot = ?, simulation_time = ?, processed_wall_ms = ? WHERE id = 1", JSON.stringify(next), simulationTime, processedWall);
-    const behind = now - processedWall;
-    await this.ctx.storage.setAlarm(behind > 0 ? now + 1_000 : now + ALARM_MS);
+
+    let nextSnapshot = row.snapshot;
+    if (plan.simulationDeltaMs > 0) {
+      const engine = createGenesisEngine({ empty: false });
+      engine.world.restore(snapshot.world);
+      const gravity = createGravitySystem(engine, undefined, { maxStepsPerUpdate: 4096 });
+      gravity.restore(snapshot.gravity);
+      gravity.update(plan.simulationTime);
+      nextSnapshot = JSON.stringify(serializeUniverseSnapshot({
+        ...snapshot,
+        simulationTime: plan.simulationTime,
+        world: engine.world.snapshot(),
+        gravity: gravity.snapshot()
+      }));
+    }
+
+    // Persist the matching snapshot and wall cursor together. A retried alarm
+    // resumes after this cursor, so an offline interval cannot be applied twice.
+    this.sql.exec("UPDATE universe_state SET previous_snapshot = snapshot, snapshot = ?, simulation_time = ?, processed_wall_ms = ? WHERE id = 1", nextSnapshot, plan.simulationTime, plan.processedWallMs);
+    await this.ctx.storage.setAlarm(plan.remainingWallMs > 0 ? now + 1_000 : now + ALARM_MS);
   }
 }
