@@ -1,6 +1,7 @@
 import { authReady, cloudflareApiBaseUrl, cloudSyncReady } from "./config.js";
 import { createFirebaseAuth } from "./firebase-client.js";
 import { deserializeUniverseSnapshot, serializeUniverseSnapshot } from "../core/persistence.js";
+import { CloudflarePersistenceRepository } from "../adapters/cloudflare-persistence-repository.js";
 
 const engine = globalThis.Genesisphere;
 const runtime = globalThis.GenesisphereRuntime;
@@ -73,23 +74,6 @@ function restore(value) {
   runtime.setPaused(state.paused);
 }
 
-function createWorldApi(auth) {
-  const endpoint = `${cloudflareApiBaseUrl.replace(/\/$/, "")}/api/v1/world`;
-  async function request(method, body) {
-    const user = auth.auth.currentUser;
-    if (!user) throw new Error("A sessão expirou. Entre novamente.");
-    const token = await user.getIdToken();
-    const response = await fetch(endpoint, {
-      method,
-      headers: { Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
-      body: body ? JSON.stringify(body) : undefined
-    });
-    if (!response.ok) throw new Error(response.status === 401 ? "Sua sessão expirou. Entre novamente." : "Não foi possível acessar o universo salvo.");
-    return response.json();
-  }
-  return { load: () => request("GET"), save: value => request("PUT", value) };
-}
-
 async function start() {
   if (!authReady) {
     console.info("Firebase/Cloudflare ainda não configurados; o modo de demonstração continua ativo.");
@@ -120,8 +104,10 @@ async function start() {
   let saveTimer = 0;
   let syncTimer = 0;
   let saveInFlight = false;
+  let persistenceRevision = 0;
   let unbindWorld = [];
   let activeUserId = null;
+  const persistenceUniverseId = engine.world.all().find(entity => entity.type === "cosmic.universe")?.id || "default";
   const setBusy = busy => { for (const button of [submit, google, switchButton]) button.disabled = busy; };
   function mode() {
     title.textContent = creating ? "Crie seu universo" : "Entre no seu universo";
@@ -142,13 +128,15 @@ async function start() {
     const localKey = `genesisphere:universe:${encodeURIComponent(user.uid)}`;
     try {
       if (cloudSyncReady) {
-        const api = createWorldApi({ auth: { currentUser: user } });
-        const result = await api.load();
+        const repository = new CloudflarePersistenceRepository({ baseUrl: cloudflareApiBaseUrl, getCurrentUser: () => user });
+        const result = await repository.load({ userId: user.uid, universeId: persistenceUniverseId });
+        persistenceRevision = result.revision || 0;
         if (result.snapshot) restore(result.snapshot);
         else {
           const saved = localStorage.getItem(localKey);
           if (saved) restore(JSON.parse(saved));
-          await api.save(snapshot());
+          const savedResult = await repository.save({ userId: user.uid, universeId: persistenceUniverseId, snapshot: snapshot(), expectedRevision: persistenceRevision, operationId: crypto.randomUUID() });
+          persistenceRevision = savedResult.revision;
         }
       } else {
         const saved = localStorage.getItem(localKey);
@@ -178,7 +166,11 @@ async function start() {
     saveInFlight = true;
     try {
       const value = snapshot();
-      if (cloudSyncReady) await createWorldApi(globalAuth).save(value);
+      if (cloudSyncReady) {
+        const repository = new CloudflarePersistenceRepository({ baseUrl: cloudflareApiBaseUrl, getCurrentUser: () => globalAuth.auth.currentUser });
+        const result = await repository.save({ userId: user.uid, universeId: persistenceUniverseId, snapshot: value, expectedRevision: persistenceRevision, operationId: crypto.randomUUID() });
+        persistenceRevision = result.revision;
+      }
       else localStorage.setItem(`genesisphere:universe:${encodeURIComponent(user.uid)}`, JSON.stringify(value));
     } catch (reason) { console.error("Universe autosave failed", reason); }
     finally { saveInFlight = false; }

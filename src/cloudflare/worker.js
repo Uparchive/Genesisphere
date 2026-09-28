@@ -85,7 +85,10 @@ export default {
     let identity;
     try { identity = await verifyFirebaseIdToken(token, env.FIREBASE_PROJECT_ID); }
     catch { return json({ error: "unauthorized" }, 401, cors); }
-    const objectId = env.UNIVERSES.idFromName(identity.uid);
+    const universeId = url.searchParams.get("universeId") || "default";
+    if (!/^[A-Za-z0-9._-]{1,128}$/.test(universeId)) return json({ error: "invalid_universe_id" }, 400, cors);
+    // Keep the original Durable Object name for the default save so existing users retain it.
+    const objectId = env.UNIVERSES.idFromName(universeId === "default" ? identity.uid : `${identity.uid}:${universeId}`);
     const object = env.UNIVERSES.get(objectId);
     if (request.method === "GET") {
       const response = await object.fetch("https://universe.internal/state", { method: "GET" });
@@ -96,10 +99,16 @@ export default {
     let value;
     try { value = await readJsonLimited(request, MAX_SAVE_BYTES); }
     catch (error) { return error instanceof RangeError ? json({ error: "snapshot_too_large" }, 413, cors) : json({ error: "invalid_json" }, 400, cors); }
+    const wrapped = value && typeof value === "object" && Object.hasOwn(value, "snapshot");
     let snapshot;
-    try { snapshot = validateUniverseSnapshot(migrateUniverseSnapshot(value)); }
+    try { snapshot = validateUniverseSnapshot(migrateUniverseSnapshot(wrapped ? value.snapshot : value)); }
     catch { return json({ error: "invalid_snapshot" }, 400, cors); }
-    const response = await object.fetch("https://universe.internal/state", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(snapshot) });
+    const write = wrapped ? {
+      snapshot,
+      expectedRevision: value.expectedRevision,
+      operationId: value.operationId
+    } : { snapshot, legacy: true };
+    const response = await object.fetch("https://universe.internal/state", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(write) });
     return new Response(response.body, { status: response.status, headers: { ...cors, "content-type": "application/json; charset=utf-8" } });
   }
 };
@@ -109,27 +118,39 @@ export class UniverseDO {
     this.ctx = ctx;
     this.sql = ctx.storage.sql;
     this.sql.exec("CREATE TABLE IF NOT EXISTS universe_state (id INTEGER PRIMARY KEY CHECK (id = 1), snapshot TEXT NOT NULL, simulation_time REAL NOT NULL, processed_wall_ms REAL NOT NULL, active_until_ms REAL NOT NULL)");
+    try { this.sql.exec("ALTER TABLE universe_state ADD COLUMN revision INTEGER NOT NULL DEFAULT 0"); } catch {}
+    try { this.sql.exec("ALTER TABLE universe_state ADD COLUMN operation_id TEXT"); } catch {}
   }
 
-  current() { return this.sql.exec("SELECT snapshot, simulation_time, processed_wall_ms, active_until_ms FROM universe_state WHERE id = 1").toArray()[0] || null; }
+  current() { return this.sql.exec("SELECT snapshot, simulation_time, processed_wall_ms, active_until_ms, revision, operation_id FROM universe_state WHERE id = 1").toArray()[0] || null; }
 
   async fetch(request) {
     if (new URL(request.url).pathname !== "/state") return json({ error: "not_found" }, 404);
     if (request.method === "GET") {
       const row = this.current();
-      if (!row) return json({ snapshot: null });
-      try { return json({ snapshot: validateUniverseSnapshot(migrateUniverseSnapshot(JSON.parse(row.snapshot))) }); }
+      if (!row) return json({ snapshot: null, revision: 0 });
+      try { return json({ snapshot: validateUniverseSnapshot(migrateUniverseSnapshot(JSON.parse(row.snapshot))), revision: Number(row.revision) || 0 }); }
       catch { return json({ error: "invalid_snapshot" }, 500); }
     }
     if (request.method !== "PUT") return json({ error: "method_not_allowed" }, 405);
     let value;
-    try { value = validateUniverseSnapshot(migrateUniverseSnapshot(await request.json())); }
+    let payload;
+    try { payload = await request.json(); value = validateUniverseSnapshot(migrateUniverseSnapshot(payload?.snapshot)); }
     catch { return json({ error: "invalid_snapshot" }, 400); }
+    const legacy = payload?.legacy === true;
+    const expectedRevision = legacy ? undefined : payload?.expectedRevision;
+    const operationId = legacy ? null : payload?.operationId;
+    if (!legacy && (!Number.isInteger(expectedRevision) || expectedRevision < 0 || typeof operationId !== "string" || !operationId.trim() || operationId.length > 128)) return json({ error: "invalid_write_metadata" }, 400);
+    const current = this.current();
+    const currentRevision = Number(current?.revision) || 0;
+    if (operationId && current?.operation_id === operationId) return json({ saved: true, revision: currentRevision, idempotent: true });
+    if (!legacy && currentRevision !== expectedRevision) return json({ error: "revision_conflict", currentRevision }, 409);
     const now = Date.now();
     const snapshot = JSON.stringify(value);
-    this.sql.exec("INSERT INTO universe_state (id, snapshot, simulation_time, processed_wall_ms, active_until_ms) VALUES (1, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET snapshot = excluded.snapshot, simulation_time = excluded.simulation_time, processed_wall_ms = excluded.processed_wall_ms, active_until_ms = excluded.active_until_ms", snapshot, value.simulationTime, now, now + ACTIVE_LEASE_MS);
+    const revision = currentRevision + 1;
+    this.sql.exec("INSERT INTO universe_state (id, snapshot, simulation_time, processed_wall_ms, active_until_ms, revision, operation_id) VALUES (1, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET snapshot = excluded.snapshot, simulation_time = excluded.simulation_time, processed_wall_ms = excluded.processed_wall_ms, active_until_ms = excluded.active_until_ms, revision = excluded.revision, operation_id = excluded.operation_id", snapshot, value.simulationTime, now, now + ACTIVE_LEASE_MS, revision, operationId);
     await this.ctx.storage.setAlarm(now + ALARM_MS);
-    return json({ saved: true });
+    return json({ saved: true, revision, idempotent: false });
   }
 
   async alarm() {
