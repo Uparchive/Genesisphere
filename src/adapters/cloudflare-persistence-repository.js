@@ -3,7 +3,7 @@ import { migrateUniverseSnapshot, validateUniverseSnapshot } from "../core/persi
 
 /** HTTP adapter for the authenticated Cloudflare Worker persistence API. */
 export class CloudflarePersistenceRepository extends PersistenceRepository {
-  constructor({ baseUrl, getCurrentUser, fetchImpl = globalThis.fetch }) {
+  constructor({ baseUrl, getCurrentUser, fetchImpl = globalThis.fetch?.bind(globalThis) }) {
     super();
     if (typeof baseUrl !== "string" || !baseUrl.trim()) throw new TypeError("baseUrl is required");
     if (typeof getCurrentUser !== "function") throw new TypeError("getCurrentUser is required");

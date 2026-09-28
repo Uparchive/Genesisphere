@@ -51,6 +51,21 @@ test("Cloudflare adapter binds scope to the authenticated identity and sends the
   await assert.rejects(repository.load({ userId: "bob", universeId: "galaxy-1" }), error => error.code === "PERSISTENCE_IDENTITY_MISMATCH");
 });
 
+test("Cloudflare adapter invokes the browser fetch function with its required global receiver", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = function(url) {
+    assert.equal(this, globalThis);
+    assert.match(String(url), /api\/v1\/world\?universeId=default/);
+    return Promise.resolve(new Response(JSON.stringify({ snapshot: null, revision: 0 }), { status: 200 }));
+  };
+  try {
+    const repository = new CloudflarePersistenceRepository({ baseUrl: "https://api.example.test", getCurrentUser: () => ({ uid: "alice", getIdToken: async () => "token" }) });
+    assert.deepEqual(await repository.load({ userId: "alice", universeId: "default" }), { snapshot: null, revision: 0 });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("Durable Object writes are revision-checked and idempotent", async () => {
   let row = null;
   const sql = { exec(query, ...args) {
