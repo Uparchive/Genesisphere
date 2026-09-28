@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "simulationTime": 1250,
+  "timeScale": 1.5,
+  "paused": false,
+  "world": {
+    "version": 1,
+    "entities": [
+      {
+        "id": "fixture-universe",
+        "type": "cosmic.empty-space",
+        "schemaVersion": 1,
+        "createdAt": 1700000000000,
+        "properties": { "name": "Fixture universe", "kind": "empty-space" },
+        "components": {}
+      },
+      {
+        "id": "fixture-system",
+        "type": "cosmic.star-system",
+        "schemaVersion": 1,
+        "createdAt": 1700000000001,
+        "properties": { "name": "Fixture system", "kind": "star-system", "universeId": "fixture-universe", "parentSystemId": null, "regionId": null, "position": { "x": 0.25, "y": 0.75 } },
+        "components": {}
+      }
+    ],
+    "events": []
+  },
+  "gravity": {
+    "version": 1,
+    "lastTime": 1250,
+    "states": [],
+    "trails": [],
+    "habitability": [],
+    "lastTrailAt": 0
+  }
+}

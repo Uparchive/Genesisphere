@@ -40,5 +40,5 @@ O custo de alarmes e CPU cresce com o número de universos ativos e com o trabal
 
 - A configuração Web do Firebase está ativa, e o login está disponível. O Worker ainda precisa ser publicado e configurado para salvar o universo na nuvem e sincronizá-lo entre dispositivos.
 - A API foi configurada como Worker independente porque GitHub Pages está hospedado em `github.io`; o `workers.dev` funciona como endpoint HTTPS separado com CORS estrito.
-- Os snapshots iniciais serializam as entidades/eventos e o estado privado do integrador. A compatibilidade futura de saves precisa de migrações explícitas por versão.
+- Snapshots persistidos usam `schemaVersion: 1`, serialização externa separada do Entity Model e migração do formato legado. O inventário dos destinos e o contrato estão em [`docs/PERSISTENCE_SCHEMA.md`](docs/PERSISTENCE_SCHEMA.md).
 - A sessão é mantida pelo Firebase no navegador; não há recuperação de senha nem verificação obrigatória de e-mail nesta primeira etapa.

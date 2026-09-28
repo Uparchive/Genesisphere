@@ -1,6 +1,7 @@
 import { createGenesisEngine } from "../game-engine.js";
 import { SIMULATION_MS_PER_REAL_MS, TimeEngine } from "../core/time-engine.js";
 import { createGravitySystem } from "../systems/physics/physics-engine.js";
+import { deserializeUniverseSnapshot, migrateUniverseSnapshot, serializeUniverseSnapshot, validateUniverseSnapshot } from "../core/persistence.js";
 
 const JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const ALARM_MS = 60_000;
@@ -95,8 +96,10 @@ export default {
     let value;
     try { value = await readJsonLimited(request, MAX_SAVE_BYTES); }
     catch (error) { return error instanceof RangeError ? json({ error: "snapshot_too_large" }, 413, cors) : json({ error: "invalid_json" }, 400, cors); }
-    if (!value || value.version !== 1 || !Number.isFinite(value.simulationTime) || value.simulationTime < 0 || !value.world || !Array.isArray(value.world.entities) || !value.gravity) return json({ error: "invalid_snapshot" }, 400, cors);
-    const response = await object.fetch("https://universe.internal/state", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(value) });
+    let snapshot;
+    try { snapshot = validateUniverseSnapshot(migrateUniverseSnapshot(value)); }
+    catch { return json({ error: "invalid_snapshot" }, 400, cors); }
+    const response = await object.fetch("https://universe.internal/state", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(snapshot) });
     return new Response(response.body, { status: response.status, headers: { ...cors, "content-type": "application/json; charset=utf-8" } });
   }
 };
@@ -114,10 +117,14 @@ export class UniverseDO {
     if (new URL(request.url).pathname !== "/state") return json({ error: "not_found" }, 404);
     if (request.method === "GET") {
       const row = this.current();
-      return json({ snapshot: row ? JSON.parse(row.snapshot) : null });
+      if (!row) return json({ snapshot: null });
+      try { return json({ snapshot: validateUniverseSnapshot(migrateUniverseSnapshot(JSON.parse(row.snapshot))) }); }
+      catch { return json({ error: "invalid_snapshot" }, 500); }
     }
     if (request.method !== "PUT") return json({ error: "method_not_allowed" }, 405);
-    const value = await request.json();
+    let value;
+    try { value = validateUniverseSnapshot(migrateUniverseSnapshot(await request.json())); }
+    catch { return json({ error: "invalid_snapshot" }, 400); }
     const now = Date.now();
     const snapshot = JSON.stringify(value);
     this.sql.exec("INSERT INTO universe_state (id, snapshot, simulation_time, processed_wall_ms, active_until_ms) VALUES (1, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET snapshot = excluded.snapshot, simulation_time = excluded.simulation_time, processed_wall_ms = excluded.processed_wall_ms, active_until_ms = excluded.active_until_ms", snapshot, value.simulationTime, now, now + ACTIVE_LEASE_MS);
@@ -135,7 +142,7 @@ export class UniverseDO {
     }
     const elapsed = Math.max(0, now - row.processed_wall_ms);
     if (!elapsed) { await this.ctx.storage.setAlarm(now + ALARM_MS); return; }
-    const snapshot = JSON.parse(row.snapshot);
+    const snapshot = deserializeUniverseSnapshot(JSON.parse(row.snapshot));
     const timeScale = Number.isFinite(snapshot.timeScale) && snapshot.timeScale > 0
       ? Math.max(.1, Math.min(64, snapshot.timeScale))
       : 1;
@@ -158,7 +165,7 @@ export class UniverseDO {
     const advancement = clock.advance(processed);
     const simulationTime = advancement.simulationTime;
     gravity.update(simulationTime);
-    const next = { ...snapshot, simulationTime, world: engine.world.snapshot(), gravity: gravity.snapshot() };
+    const next = serializeUniverseSnapshot({ ...snapshot, simulationTime, world: engine.world.snapshot(), gravity: gravity.snapshot() });
     const processedWall = advancement.realTime;
     this.sql.exec("UPDATE universe_state SET snapshot = ?, simulation_time = ?, processed_wall_ms = ? WHERE id = 1", JSON.stringify(next), simulationTime, processedWall);
     const behind = now - processedWall;

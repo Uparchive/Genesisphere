@@ -1,5 +1,6 @@
 import { authReady, cloudflareApiBaseUrl, cloudSyncReady } from "./config.js";
 import { createFirebaseAuth } from "./firebase-client.js";
+import { deserializeUniverseSnapshot, serializeUniverseSnapshot } from "../core/persistence.js";
 
 const engine = globalThis.Genesisphere;
 const runtime = globalThis.GenesisphereRuntime;
@@ -54,21 +55,22 @@ function messageFor(error) {
 }
 
 function snapshot() {
-  return {
-    version: 1,
+  return serializeUniverseSnapshot({
     simulationTime: runtime.getSimulationTime(),
     timeScale: runtime.getTimeScale(),
     paused: runtime.getPaused(),
     world: engine.world.snapshot(),
     gravity: runtime.collisions.snapshot()
-  };
+  });
 }
 
 function restore(value) {
-  if (!value || value.version !== 1) throw new Error("Formato de universo salvo incompatível.");
-  engine.world.restore(value.world);
-  runtime.collisions.restore(value.gravity);
-  runtime.setSimulationTime(Number.isFinite(value.simulationTime) ? value.simulationTime : 0);
+  const state = deserializeUniverseSnapshot(value);
+  engine.world.restore(state.world);
+  runtime.collisions.restore(state.gravity);
+  runtime.setSimulationTime(state.simulationTime);
+  runtime.setTimeScale(state.timeScale);
+  runtime.setPaused(state.paused);
 }
 
 function createWorldApi(auth) {
