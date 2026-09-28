@@ -1,6 +1,7 @@
 import { authReady, cloudflareApiBaseUrl, cloudSyncReady } from "./config.js";
 import { createFirebaseAuth } from "./firebase-client.js";
 import { deserializeUniverseSnapshot, serializeUniverseSnapshot } from "../core/persistence.js";
+import { loadSnapshotWithRecovery, saveSnapshotWithRecovery } from "../core/snapshot-storage.js";
 import { CloudflarePersistenceRepository } from "../adapters/cloudflare-persistence-repository.js";
 
 const engine = globalThis.Genesisphere;
@@ -104,6 +105,7 @@ async function start() {
   let saveTimer = 0;
   let syncTimer = 0;
   let saveInFlight = false;
+  let saveRequested = false;
   let persistenceRevision = 0;
   let unbindWorld = [];
   let activeUserId = null;
@@ -133,15 +135,15 @@ async function start() {
         persistenceRevision = result.revision || 0;
         if (result.snapshot) restore(result.snapshot);
         else {
-          const saved = localStorage.getItem(localKey);
-          if (saved) restore(JSON.parse(saved));
+          const saved = loadSnapshotWithRecovery(localStorage, localKey).snapshot;
+          if (saved) restore(saved);
           const savedResult = await repository.save({ userId: user.uid, universeId: persistenceUniverseId, snapshot: snapshot(), expectedRevision: persistenceRevision, operationId: crypto.randomUUID() });
           persistenceRevision = savedResult.revision;
         }
       } else {
-        const saved = localStorage.getItem(localKey);
-        if (saved) restore(JSON.parse(saved));
-        else localStorage.setItem(localKey, JSON.stringify(snapshot()));
+        const saved = loadSnapshotWithRecovery(localStorage, localKey).snapshot;
+        if (saved) restore(saved);
+        else saveSnapshotWithRecovery(localStorage, localKey, snapshot());
       }
       activeUserId = user.uid;
       document.querySelector("#authUserLabel").textContent = user.displayName || user.email || "Meu universo";
@@ -160,20 +162,24 @@ async function start() {
     }
   }
   async function saveNow() {
-    if (!activeUserId || saveInFlight) return;
+    if (!activeUserId) return;
+    if (saveInFlight) { saveRequested = true; return; }
     const user = globalAuth.auth.currentUser;
     if (!user || user.uid !== activeUserId) return;
     saveInFlight = true;
-    try {
-      const value = snapshot();
-      if (cloudSyncReady) {
-        const repository = new CloudflarePersistenceRepository({ baseUrl: cloudflareApiBaseUrl, getCurrentUser: () => globalAuth.auth.currentUser });
-        const result = await repository.save({ userId: user.uid, universeId: persistenceUniverseId, snapshot: value, expectedRevision: persistenceRevision, operationId: crypto.randomUUID() });
-        persistenceRevision = result.revision;
-      }
-      else localStorage.setItem(`genesisphere:universe:${encodeURIComponent(user.uid)}`, JSON.stringify(value));
-    } catch (reason) { console.error("Universe autosave failed", reason); }
-    finally { saveInFlight = false; }
+    do {
+      saveRequested = false;
+      try {
+        const value = snapshot();
+        if (cloudSyncReady) {
+          const repository = new CloudflarePersistenceRepository({ baseUrl: cloudflareApiBaseUrl, getCurrentUser: () => globalAuth.auth.currentUser });
+          const result = await repository.save({ userId: user.uid, universeId: persistenceUniverseId, snapshot: value, expectedRevision: persistenceRevision, operationId: crypto.randomUUID() });
+          persistenceRevision = result.revision;
+        }
+        else saveSnapshotWithRecovery(localStorage, `genesisphere:universe:${encodeURIComponent(user.uid)}`, value);
+      } catch (reason) { console.error("Universe autosave failed", reason); }
+    } while (saveRequested && activeUserId === user.uid);
+    saveInFlight = false;
   }
   function scheduleSave() {
     if (!activeUserId) return;
@@ -183,6 +189,8 @@ async function start() {
       if (user?.uid === activeUserId) saveNow();
     }, 1200);
   }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") saveNow(); });
+  window.addEventListener("pagehide", () => saveNow());
   let globalAuth;
   try {
     globalAuth = await createFirebaseAuth();

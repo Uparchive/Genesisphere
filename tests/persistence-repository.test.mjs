@@ -71,8 +71,8 @@ test("Durable Object writes are revision-checked and idempotent", async () => {
   const sql = { exec(query, ...args) {
     if (query.startsWith("SELECT")) return { toArray: () => row ? [{ ...row }] : [] };
     if (query.startsWith("INSERT INTO universe_state")) {
-      const [snapshot, simulationTime, processedWallMs, activeUntilMs, revision, operationId] = args;
-      row = { snapshot, simulation_time: simulationTime, processed_wall_ms: processedWallMs, active_until_ms: activeUntilMs, revision, operation_id: operationId };
+      const [snapshot, previousSnapshot, simulationTime, processedWallMs, activeUntilMs, revision, operationId] = args;
+      row = { snapshot, previous_snapshot: previousSnapshot, simulation_time: simulationTime, processed_wall_ms: processedWallMs, active_until_ms: activeUntilMs, revision, operation_id: operationId };
     }
     return { toArray: () => [] };
   } };
@@ -93,4 +93,38 @@ test("Durable Object writes are revision-checked and idempotent", async () => {
   const loaded = await (await object.fetch(new Request("https://universe.internal/state"))).json();
   assert.equal(loaded.revision, 1);
   assert.deepEqual(loaded.snapshot, snapshot);
+});
+
+test("Durable Object retains and recovers the previous valid snapshot", async () => {
+  let row = null;
+  let failWrite = false;
+  const sql = { exec(query, ...args) {
+    if (query.startsWith("SELECT")) return { toArray: () => row ? [{ ...row }] : [] };
+    if (query.startsWith("INSERT INTO universe_state")) {
+      if (failWrite) throw new Error("simulated SQL failure");
+      const [snapshot, previousSnapshot, simulationTime, processedWallMs, activeUntilMs, revision, operationId] = args;
+      row = { snapshot, previous_snapshot: previousSnapshot, simulation_time: simulationTime, processed_wall_ms: processedWallMs, active_until_ms: activeUntilMs, revision, operation_id: operationId };
+    }
+    return { toArray: () => [] };
+  } };
+  const object = new UniverseDO({ storage: { sql, setAlarm: async () => {} } });
+  const first = emptySnapshot();
+  const second = { ...first, simulationTime: 8 };
+  const save = (value, expectedRevision, operationId) => object.fetch(new Request("https://universe.internal/state", {
+    method: "PUT", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ snapshot: value, expectedRevision, operationId })
+  }));
+  await save(first, 0, "first");
+  failWrite = true;
+  await assert.rejects(save(second, 1, "failed"), /simulated SQL failure/);
+  failWrite = false;
+  assert.deepEqual((await (await object.fetch(new Request("https://universe.internal/state"))).json()).snapshot, first);
+  await save(second, 1, "second");
+  assert.equal(row.previous_snapshot, JSON.stringify(first));
+
+  row.snapshot = "{corrupt";
+  const loaded = await (await object.fetch(new Request("https://universe.internal/state"))).json();
+  assert.equal(loaded.recovered, true);
+  assert.equal(loaded.revision, 2);
+  assert.deepEqual(loaded.snapshot, first);
 });

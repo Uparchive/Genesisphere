@@ -120,9 +120,10 @@ export class UniverseDO {
     this.sql.exec("CREATE TABLE IF NOT EXISTS universe_state (id INTEGER PRIMARY KEY CHECK (id = 1), snapshot TEXT NOT NULL, simulation_time REAL NOT NULL, processed_wall_ms REAL NOT NULL, active_until_ms REAL NOT NULL)");
     try { this.sql.exec("ALTER TABLE universe_state ADD COLUMN revision INTEGER NOT NULL DEFAULT 0"); } catch {}
     try { this.sql.exec("ALTER TABLE universe_state ADD COLUMN operation_id TEXT"); } catch {}
+    try { this.sql.exec("ALTER TABLE universe_state ADD COLUMN previous_snapshot TEXT"); } catch {}
   }
 
-  current() { return this.sql.exec("SELECT snapshot, simulation_time, processed_wall_ms, active_until_ms, revision, operation_id FROM universe_state WHERE id = 1").toArray()[0] || null; }
+  current() { return this.sql.exec("SELECT snapshot, previous_snapshot, simulation_time, processed_wall_ms, active_until_ms, revision, operation_id FROM universe_state WHERE id = 1").toArray()[0] || null; }
 
   async fetch(request) {
     if (new URL(request.url).pathname !== "/state") return json({ error: "not_found" }, 404);
@@ -130,7 +131,10 @@ export class UniverseDO {
       const row = this.current();
       if (!row) return json({ snapshot: null, revision: 0 });
       try { return json({ snapshot: validateUniverseSnapshot(migrateUniverseSnapshot(JSON.parse(row.snapshot))), revision: Number(row.revision) || 0 }); }
-      catch { return json({ error: "invalid_snapshot" }, 500); }
+      catch {
+        try { return json({ snapshot: validateUniverseSnapshot(migrateUniverseSnapshot(JSON.parse(row.previous_snapshot))), revision: Number(row.revision) || 0, recovered: true }); }
+        catch { return json({ error: "invalid_snapshot" }, 500); }
+      }
     }
     if (request.method !== "PUT") return json({ error: "method_not_allowed" }, 405);
     let value;
@@ -145,10 +149,18 @@ export class UniverseDO {
     const currentRevision = Number(current?.revision) || 0;
     if (operationId && current?.operation_id === operationId) return json({ saved: true, revision: currentRevision, idempotent: true });
     if (!legacy && currentRevision !== expectedRevision) return json({ error: "revision_conflict", currentRevision }, 409);
+    let previousSnapshot = current?.snapshot || null;
+    try { if (previousSnapshot) validateUniverseSnapshot(migrateUniverseSnapshot(JSON.parse(previousSnapshot))); }
+    catch {
+      try {
+        validateUniverseSnapshot(migrateUniverseSnapshot(JSON.parse(current?.previous_snapshot)));
+        previousSnapshot = current.previous_snapshot;
+      } catch { previousSnapshot = null; }
+    }
     const now = Date.now();
     const snapshot = JSON.stringify(value);
     const revision = currentRevision + 1;
-    this.sql.exec("INSERT INTO universe_state (id, snapshot, simulation_time, processed_wall_ms, active_until_ms, revision, operation_id) VALUES (1, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET snapshot = excluded.snapshot, simulation_time = excluded.simulation_time, processed_wall_ms = excluded.processed_wall_ms, active_until_ms = excluded.active_until_ms, revision = excluded.revision, operation_id = excluded.operation_id", snapshot, value.simulationTime, now, now + ACTIVE_LEASE_MS, revision, operationId);
+    this.sql.exec("INSERT INTO universe_state (id, snapshot, previous_snapshot, simulation_time, processed_wall_ms, active_until_ms, revision, operation_id) VALUES (1, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET previous_snapshot = excluded.previous_snapshot, snapshot = excluded.snapshot, simulation_time = excluded.simulation_time, processed_wall_ms = excluded.processed_wall_ms, active_until_ms = excluded.active_until_ms, revision = excluded.revision, operation_id = excluded.operation_id", snapshot, previousSnapshot, value.simulationTime, now, now + ACTIVE_LEASE_MS, revision, operationId);
     await this.ctx.storage.setAlarm(now + ALARM_MS);
     return json({ saved: true, revision, idempotent: false });
   }
@@ -188,7 +200,7 @@ export class UniverseDO {
     gravity.update(simulationTime);
     const next = serializeUniverseSnapshot({ ...snapshot, simulationTime, world: engine.world.snapshot(), gravity: gravity.snapshot() });
     const processedWall = advancement.realTime;
-    this.sql.exec("UPDATE universe_state SET snapshot = ?, simulation_time = ?, processed_wall_ms = ? WHERE id = 1", JSON.stringify(next), simulationTime, processedWall);
+    this.sql.exec("UPDATE universe_state SET previous_snapshot = snapshot, snapshot = ?, simulation_time = ?, processed_wall_ms = ? WHERE id = 1", JSON.stringify(next), simulationTime, processedWall);
     const behind = now - processedWall;
     await this.ctx.storage.setAlarm(behind > 0 ? now + 1_000 : now + ALARM_MS);
   }
