@@ -1,7 +1,7 @@
 import { TimeEngine } from "./time-engine.js";
 
 /** Maximum simulated time integrated during one Durable Object alarm. */
-export const MAX_OFFLINE_SIMULATION_STEP_MS = 60_000;
+export const MAX_OFFLINE_SIMULATION_STEP_MS = 30_000;
 const CLOCK_TOLERANCE_MS = 1e-7;
 
 /**
