@@ -6,6 +6,7 @@ import { createGravitySystem } from "../src/systems/stellar/orbital-collisions.j
 import { deserializeUniverseSnapshot, migrateUniverseSnapshot, serializeUniverseSnapshot } from "../src/core/persistence.js";
 
 const fixture = JSON.parse(await readFile(new URL("./fixtures/universe-snapshot-v1.json", import.meta.url), "utf8"));
+const legacyFixture = JSON.parse(await readFile(new URL("./fixtures/universe-snapshot-legacy-v1.json", import.meta.url), "utf8"));
 
 test("world snapshots restore entities and bounded history without emitting new records", () => {
   const source = createGenesisEngine();
@@ -58,6 +59,28 @@ test("legacy version:1 saves migrate to the current versioned contract", () => {
   assert.equal(migrated.schemaVersion, 1);
   assert.equal(migrated.world.entities[0].id, "legacy-system");
   assert.equal(deserializeUniverseSnapshot(legacy).world.entities[0].universeId, "legacy-universe");
+});
+
+test("legacy save fixture migrates and restores IDs, relationships, properties, and history", () => {
+  const migrated = migrateUniverseSnapshot(legacyFixture);
+  assert.equal(migrated.schemaVersion, 1);
+  assert.equal(migrated.simulationTime, 12000);
+  assert.equal(migrated.world.entities[0].id, "legacy-universe");
+  assert.equal(migrated.world.entities[1].properties.universeId, "legacy-universe");
+  assert.deepEqual(migrated.world.events, legacyFixture.world.events);
+
+  const internal = deserializeUniverseSnapshot(legacyFixture);
+  const engine = createGenesisEngine({ empty: false });
+  engine.world.restore(internal.world);
+  assert.deepEqual(engine.world.all().map(entity => entity.id), ["legacy-universe", "legacy-system"]);
+  assert.equal(engine.world.get("legacy-system").universeId, "legacy-universe");
+  assert.deepEqual(engine.world.get("legacy-universe").metadata, { origin: "legacy-save" });
+  assert.deepEqual(engine.world.history(), legacyFixture.world.events);
+
+  const savedAgain = serializeUniverseSnapshot({ ...internal, world: engine.world.snapshot() });
+  assert.equal(savedAgain.schemaVersion, 1);
+  assert.equal(savedAgain.world.entities[1].properties.universeId, "legacy-universe");
+  assert.deepEqual(savedAgain.world.events, legacyFixture.world.events);
 });
 
 test("invalid versioned snapshots are rejected before Core state is changed", () => {

@@ -25,12 +25,35 @@ function check(path) {
   }
 }
 
+function checkCoreImports(path, source) {
+  const relativePath = relative(root, path).replaceAll("\\", "/");
+  const protectedModule = /^(src\/core|src\/entities|src\/systems\/(physics|stellar))\//.test(relativePath);
+  if (!protectedModule) return;
+
+  const forbidden = /^(?:.*(?:firebase|cloudflare|localstorage|indexeddb|document|window|canvas|renderer|three|babylon|pixi|phaser).*$|https?:\/\/.*)$/i;
+  const importPatterns = [
+    /\bimport\s*(?:[^;]*?\s+from\s*)?["']([^"']+)["']/g,
+    /\bexport\s+[^;]*?\s+from\s*["']([^"']+)["']/g,
+    /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g
+  ];
+  for (const pattern of importPatterns) {
+    for (const match of source.matchAll(pattern)) {
+      if (forbidden.test(match[1])) {
+        throw new Error(`Prohibited Core dependency in ${relativePath}: ${match[1]}`);
+      }
+    }
+  }
+}
+
 try {
   const requiredEntries = ["index.html", "src/app.js", "src/auth/auth-gate.js", "src/cloudflare/worker.js", "wrangler.toml"];
   for (const path of requiredEntries) await readFile(join(root, path));
 
   const sourceFiles = await collectJavaScript(join(root, "src"));
-  for (const path of sourceFiles) check(path);
+  for (const path of sourceFiles) {
+    check(path);
+    checkCoreImports(path, await readFile(path, "utf8"));
+  }
 
   const html = await readFile(join(root, "index.html"), "utf8");
   const inlineModule = [...html.matchAll(/<script\b(?=[^>]*\btype=["']module["'])(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)][0]?.[1];

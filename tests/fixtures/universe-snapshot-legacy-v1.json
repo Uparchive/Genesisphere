@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "simulationTime": 12000,
+  "timeScale": 2,
+  "paused": false,
+  "world": {
+    "version": 1,
+    "entities": [
+      {
+        "id": "legacy-universe",
+        "type": "cosmic.empty-space",
+        "schemaVersion": 1,
+        "createdAt": 1700000000000,
+        "name": "Genesisphere legado",
+        "kind": "space",
+        "metadata": { "origin": "legacy-save" },
+        "components": { "identity": { "id": "legacy-universe", "type": "cosmic.empty-space" } }
+      },
+      {
+        "id": "legacy-system",
+        "type": "cosmic.star-system",
+        "schemaVersion": 1,
+        "createdAt": 1700000000001,
+        "name": "Genesis legado",
+        "kind": "star-system",
+        "universeId": "legacy-universe",
+        "position": { "x": 0.375, "y": 0.625 },
+        "components": { "identity": { "id": "legacy-system", "type": "cosmic.star-system" } }
+      }
+    ],
+    "events": [
+      { "kind": "LEGACY_MARKER", "entityId": "legacy-system", "at": 1700000000001 }
+    ]
+  },
+  "gravity": {
+    "version": 1,
+    "lastTime": 12000,
+    "states": [],
+    "trails": [],
+    "habitability": [],
+    "lastTrailAt": 0
+  }
+}
